@@ -1,0 +1,2 @@
+# Pulmonary Imaging for Volume Oncology Triage
+This repository contains resources and tools for the Pulmonary Imaging for Volume Oncology Triage (PIVOT) project. The project uses Pulmonary Imaging to assist in the triage of oncology patients.
