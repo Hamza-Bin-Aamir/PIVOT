@@ -1,0 +1,19 @@
+# MANIFEST.in - Include additional files in the distribution package
+
+include README.md
+include LICENSE
+include requirements.txt
+include requirements-dev.txt
+
+# Include configuration files
+recursive-include configs *.yaml *.yml *.json
+
+# Include documentation
+recursive-include docs *.md *.rst
+
+# Exclude unnecessary files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so

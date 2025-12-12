@@ -2,6 +2,62 @@
 
 This repository contains resources and tools for the Pulmonary Imaging for Volume Oncology Triage (PIVOT) project. The project uses Pulmonary Imaging to assist in the triage of oncology patients.
 
+## Quick Start
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Hamza-Bin-Aamir/PIVOT.git
+   cd PIVOT
+   ```
+
+2. Set up the development environment (recommended):
+   ```bash
+   bash scripts/setup_env.sh
+   ```
+
+   Or manually install dependencies:
+   ```bash
+   # Create and activate virtual environment
+   python3 -m venv venv
+   source venv/bin/activate
+
+   # Install dependencies
+   pip install -r requirements.txt
+   pip install -e .
+
+   # Install pre-commit hooks
+   pre-commit install --hook-type commit-msg
+   pre-commit install
+   ```
+
+3. Copy the environment template and configure:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your settings
+   ```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+```
+
+### Using Make Commands
+
+```bash
+make install      # Install dependencies
+make test         # Run tests
+make format       # Format code with black and isort
+make lint         # Run linting checks
+make clean        # Clean build artifacts
+```
+
 ## Dataset
 
 This project employs an open-source data strategy to ensure both generalization against academic benchmarks and reproducibility. The model is pre-trained on the public LUNA16 dataset (a subset of LIDC-IDRI).
@@ -27,6 +83,49 @@ Raw CT data (DICOM or MHD) undergoes a rigorous 3D preprocessing pipeline before
 4. **Patch Generation:** The volume is cropped into 3D patches of size `(96, 96, 96)` for training.
 
 ## Directory Structure
+
+The project follows this structure:
+
+```
+PIVOT/
+├── configs/                # Configuration files
+│   └── train.yaml         # Training configuration
+├── data/                  # Data directory (gitignored)
+│   ├── raw/               # Raw datasets
+│   │   └── luna16/       # LUNA16 dataset
+│   └── processed/        # Preprocessed data
+│       ├── train/        # Training data
+│       └── val/          # Validation data
+├── docs/                  # Documentation
+├── scripts/               # Utility scripts
+│   ├── setup_env.sh      # Environment setup
+│   └── download_luna16.sh # Dataset download helper
+├── src/                   # Source code
+│   ├── data/             # Data processing modules
+│   │   ├── dataset.py    # Dataset classes
+│   │   └── preprocess.py # Preprocessing pipeline
+│   ├── model/            # Model architectures
+│   │   └── unet.py       # 3D U-Net implementation
+│   ├── train/            # Training pipeline
+│   │   └── main.py       # Training script
+│   ├── inference/        # Inference pipeline
+│   │   └── main.py       # Inference script
+│   ├── utils/            # Utility functions
+│   │   └── logger.py     # Logging utilities
+│   └── config/           # Configuration management
+├── tests/                 # Test suite
+├── .githooks/            # Custom git hooks
+│   └── check_imports.py  # Import validation hook
+├── requirements.txt       # Production dependencies
+├── requirements-dev.txt   # Development dependencies
+├── setup.py              # Package installation
+├── pyproject.toml        # Tool configuration
+├── Makefile              # Build automation
+└── .pre-commit-config.yaml # Pre-commit hooks
+
+```
+
+## Data Directory Structure
 
 To run the training scripts, organize your data as follows:
 
