@@ -1,0 +1,54 @@
+# Dockerfile for PIVOT Inference - NVIDIA CUDA
+# Lightweight image optimized for model inference
+
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CUDA_HOME=/usr/local/cuda \
+    UV_SYSTEM_PYTHON=1
+
+LABEL maintainer="PIVOT Team" \
+      description="Lightweight Docker image for PIVOT inference with NVIDIA CUDA support"
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    curl \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.10 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy only necessary source files
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY configs/ ./configs/
+
+# Install dependencies with uv (CUDA version, production only)
+RUN uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cu121
+RUN uv pip install --system .
+
+# Create directories for input/output
+RUN mkdir -p /app/input /app/output /app/models
+
+# Expose port for API (if running FastAPI server)
+EXPOSE 8000
+
+# Default command (can be overridden)
+CMD ["python", "-m", "inference.main"]

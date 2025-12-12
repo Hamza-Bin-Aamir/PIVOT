@@ -1,0 +1,103 @@
+# Fast Development Configuration
+# Minimal epochs and settings for quick testing
+
+experiment_name: fast_dev
+output_dir: outputs/fast_dev
+
+train:
+  # Training
+  epochs: 2
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 1
+
+  # Data
+  data_dir: data/processed
+  batch_size: 1
+  num_workers: 0  # Disable multiprocessing for debugging
+
+  # Model
+  model:
+    type: unet3d
+    in_channels: 1
+    out_channels: 1
+    init_features: 16  # Smaller model for faster training
+    depth: 3
+    dropout: 0.0
+    batch_norm: true
+
+  # Preprocessing
+  preprocessing:
+    target_spacing: [1.0, 1.0, 1.0]
+    window_center: -600
+    window_width: 1500
+    patch_size: [64, 64, 64]  # Smaller patches for speed
+    normalize: true
+
+  # Augmentation
+  augmentation:
+    enabled: false  # Disable for faster iteration
+
+  # Optimizer
+  optimizer:
+    type: adam
+    lr: 0.001  # Higher LR for faster convergence
+    weight_decay: 0.0
+    betas: [0.9, 0.999]
+
+  # Scheduler
+  scheduler:
+    type: cosine
+    min_lr: 0.0001
+    warmup_epochs: 0
+
+  # Loss
+  loss:
+    type: dice
+    smooth: 0.00001
+    reduction: mean
+
+  # Checkpointing
+  checkpoint:
+    checkpoint_dir: checkpoints/fast_dev
+    save_every: 1
+    save_best: true
+    metric_to_track: val_dice
+    mode: max
+    save_last: true
+    max_checkpoints: 2
+
+  # Logging
+  logging:
+    log_dir: logs/fast_dev
+    log_every: 1
+    tensorboard: true
+    console_log_level: DEBUG
+    file_log_level: DEBUG
+
+  # W&B
+  wandb:
+    enabled: false
+    project: pivot
+
+  # Validation
+  validation:
+    val_every: 1
+    compute_metrics: true
+    save_predictions: false
+
+  # Hardware
+  hardware:
+    device: cuda
+    mixed_precision: false  # Disable for debugging
+    cudnn_benchmark: false
+    deterministic: true
+    seed: 42
+
+# Inference
+inference:
+  batch_size: 1
+  overlap: 0.5
+  threshold: 0.5
+  sliding_window: true
+  save_probabilities: false
+  tta: false

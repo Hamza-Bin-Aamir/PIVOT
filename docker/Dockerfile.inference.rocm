@@ -1,0 +1,48 @@
+# Dockerfile for PIVOT Inference - AMD ROCm
+# Lightweight image optimized for model inference with AMD GPU
+
+FROM rocm/pytorch:rocm5.7_ubuntu22.04_py3.10_pytorch_2.0.1
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HSA_OVERRIDE_GFX_VERSION=10.3.0 \
+    UV_SYSTEM_PYTHON=1
+
+LABEL maintainer="PIVOT Team" \
+      description="Lightweight Docker image for PIVOT inference with AMD ROCm support"
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy only necessary source files
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY configs/ ./configs/
+
+# Install dependencies with uv (ROCm PyTorch already in base image)
+RUN uv pip install --system .
+
+# Create directories for input/output
+RUN mkdir -p /app/input /app/output /app/models
+
+# Expose port for API
+EXPOSE 8000
+
+# Default command
+CMD ["python", "-m", "inference.main"]

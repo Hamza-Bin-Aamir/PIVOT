@@ -1,0 +1,69 @@
+# Dockerfile for PIVOT Training with NVIDIA CUDA
+# This image includes all dependencies needed for training deep learning models
+
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CUDA_HOME=/usr/local/cuda \
+    UV_SYSTEM_PYTHON=1
+
+LABEL maintainer="PIVOT Team" \
+      description="Docker image for PIVOT training pipeline with NVIDIA CUDA support"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3-dev \
+    git \
+    wget \
+    curl \
+    vim \
+    build-essential \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.10 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy project files
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY configs/ ./configs/
+
+# Install dependencies with uv (CUDA version)
+RUN uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cu121
+RUN uv pip install --system -e .
+
+# Create necessary directories
+RUN mkdir -p /workspace/data/raw \
+             /workspace/data/processed \
+             /workspace/checkpoints \
+             /workspace/logs \
+             /workspace/wandb
+
+# Set up permissions
+RUN chmod -R 777 /workspace/data \
+                 /workspace/checkpoints \
+                 /workspace/logs \
+                 /workspace/wandb
+
+# Expose ports for TensorBoard and Jupyter
+EXPOSE 6006 8888
+
+# Default command
+CMD ["/bin/bash"]

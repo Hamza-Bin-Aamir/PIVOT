@@ -1,0 +1,62 @@
+# Dockerfile for PIVOT Inference - Intel GPU
+# Lightweight image optimized for model inference with Intel GPU
+
+FROM intel/oneapi-basekit:2024.0.0-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_SYSTEM_PYTHON=1
+
+LABEL maintainer="PIVOT Team" \
+      description="Lightweight Docker image for PIVOT inference with Intel GPU support"
+
+# Install Python and minimal system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    curl \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.10 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Install PyTorch with Intel GPU support
+RUN uv pip install --system \
+    torch==2.1.0.post0 \
+    torchvision==0.16.0.post0 \
+    intel-extension-for-pytorch==2.1.0+xpu \
+    --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+
+# Copy only necessary source files
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY configs/ ./configs/
+
+# Install dependencies with uv
+RUN uv pip install --system .
+
+# Create directories for input/output
+RUN mkdir -p /app/input /app/output /app/models
+
+# Source OneAPI environment
+RUN echo "source /opt/intel/oneapi/setvars.sh" >> ~/.bashrc
+
+# Expose port for API
+EXPOSE 8000
+
+# Default command
+CMD ["/bin/bash", "-l", "-c", "python -m inference.main"]

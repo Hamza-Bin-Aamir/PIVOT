@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # Training service with NVIDIA GPU support
+  train-cuda:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train.cuda
+    image: pivot-train-cuda:latest
+    container_name: pivot-train-cuda
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - WANDB_PROJECT=${WANDB_PROJECT:-pivot}
+    volumes:
+      - ./data:/workspace/data
+      - ./checkpoints:/workspace/checkpoints
+      - ./logs:/workspace/logs
+      - ./src:/workspace/src
+      - ./configs:/workspace/configs
+      - ./wandb:/workspace/wandb
+    ports:
+      - "6006:6006"  # TensorBoard
+      - "8888:8888"  # Jupyter
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Training service with AMD GPU support (ROCm)
+  train-rocm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train.rocm
+    image: pivot-train-rocm:latest
+    container_name: pivot-train-rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - WANDB_PROJECT=${WANDB_PROJECT:-pivot}
+    volumes:
+      - ./data:/workspace/data
+      - ./checkpoints:/workspace/checkpoints
+      - ./logs:/workspace/logs
+      - ./src:/workspace/src
+      - ./configs:/workspace/configs
+      - ./wandb:/workspace/wandb
+    ports:
+      - "6006:6006"  # TensorBoard
+      - "8888:8888"  # Jupyter
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+  # Training service with Intel GPU support (OneAPI)
+  train-intel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train.intel
+    image: pivot-train-intel:latest
+    container_name: pivot-train-intel
+    devices:
+      - /dev/dri
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - WANDB_PROJECT=${WANDB_PROJECT:-pivot}
+    volumes:
+      - ./data:/workspace/data
+      - ./checkpoints:/workspace/checkpoints
+      - ./logs:/workspace/logs
+      - ./src:/workspace/src
+      - ./configs:/workspace/configs
+      - ./wandb:/workspace/wandb
+    ports:
+      - "6006:6006"  # TensorBoard
+      - "8888:8888"  # Jupyter
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    command: ["/bin/bash", "-c", "source /opt/intel/oneapi/setvars.sh && /bin/bash"]
+
+  # Inference service with NVIDIA GPU
+  inference-cuda:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.inference.cuda
+    image: pivot-inference-cuda:latest
+    container_name: pivot-inference-cuda
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./checkpoints:/app/models:ro
+      - ./data/raw:/app/input:ro
+      - ./output:/app/output
+    ports:
+      - "8000:8000"
+    shm_size: '4gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: /bin/bash
+
+  # Inference service with AMD GPU (ROCm)
+  inference-rocm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.inference.rocm
+    image: pivot-inference-rocm:latest
+    container_name: pivot-inference-rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+    volumes:
+      - ./checkpoints:/app/models:ro
+      - ./data/raw:/app/input:ro
+      - ./output:/app/output
+    ports:
+      - "8000:8000"
+    shm_size: '4gb'
+    command: /bin/bash
+
+  # Inference service with Intel GPU (OneAPI)
+  inference-intel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.inference.intel
+    image: pivot-inference-intel:latest
+    container_name: pivot-inference-intel
+    devices:
+      - /dev/dri
+    volumes:
+      - ./checkpoints:/app/models:ro
+      - ./data/raw:/app/input:ro
+      - ./output:/app/output
+    ports:
+      - "8000:8000"
+    shm_size: '4gb'
+    command: ["/bin/bash", "-c", "source /opt/intel/oneapi/setvars.sh --force && /bin/bash"]
+
+  # Development service (NVIDIA CUDA by default)
+  dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train.cuda
+    image: pivot-train-cuda:latest
+    container_name: pivot-dev
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - .:/workspace
+    ports:
+      - "8888:8888"  # Jupyter
+      - "6006:6006"  # TensorBoard
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+
+networks:
+  default:
+    name: pivot-network
