@@ -1,4 +1,6 @@
 # Core deep learning frameworks
+# Note: For GPU-specific installations, see requirements-gpu.txt
+# PyTorch will be installed based on GPU backend in Dockerfiles
 torch>=2.0.0
 torchvision>=0.15.0
 monai>=1.3.0

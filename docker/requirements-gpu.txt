@@ -1,0 +1,23 @@
+# GPU Backend Selection for Requirements
+
+# This file documents the different PyTorch installation options for different GPU backends
+# Actual installation is handled by the Dockerfiles
+
+# NVIDIA GPUs (CUDA)
+# torch>=2.0.0
+# torchvision>=0.15.0
+# Install via: pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# AMD GPUs (ROCm)
+# torch>=2.0.0
+# torchvision>=0.15.0
+# Install via: pip3 install torch torchvision --index-url https://download.pytorch.org/whl/rocm5.7
+
+# Intel GPUs (OneAPI)
+# intel-extension-for-pytorch>=2.0.0
+# Install via: pip3 install torch torchvision intel-extension-for-pytorch --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+
+# CPU-only (fallback)
+# torch>=2.0.0
+# torchvision>=0.15.0
+# Install via: pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu

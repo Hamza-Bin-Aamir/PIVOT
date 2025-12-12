@@ -58,6 +58,112 @@ make lint         # Run linting checks
 make clean        # Clean build artifacts
 ```
 
+### Docker Setup (Recommended for GPU Training)
+
+PIVOT supports multiple GPU backends through Docker:
+- **NVIDIA GPUs** (CUDA) - Consumer and datacenter GPUs
+- **AMD GPUs** (ROCm) - Integrated and dedicated GPUs
+- **Intel GPUs** (OneAPI) - Integrated and dedicated GPUs (Arc series)
+
+#### Detect Your GPU
+
+```bash
+# Auto-detect available GPU backend
+bash scripts/detect_gpu.sh
+```
+
+#### Build Docker Images
+
+```bash
+# Detect GPU and build appropriate images
+bash scripts/detect_gpu.sh  # See recommended backend
+
+# Build for specific GPU backend
+bash scripts/docker_build.sh --all --backend cuda   # NVIDIA
+bash scripts/docker_build.sh --all --backend rocm   # AMD
+bash scripts/docker_build.sh --all --backend intel  # Intel
+
+# Build specific image types
+bash scripts/docker_build.sh --train --backend cuda      # Training only
+bash scripts/docker_build.sh --inference --backend rocm  # Inference only
+```
+
+#### Run Training in Docker
+
+```bash
+# Using auto-detected or specified backend
+bash scripts/docker_train.sh --backend cuda --config configs/train.yaml
+
+# Start training container in background
+docker-compose up -d train-cuda    # NVIDIA
+docker-compose up -d train-rocm    # AMD
+docker-compose up -d train-intel   # Intel
+```
+
+#### Run Inference in Docker
+
+```bash
+# With specified GPU backend
+bash scripts/docker_inference.sh \
+  --backend cuda \
+  --input ./data/raw/scan.mhd \
+  --model ./checkpoints/model.pth \
+  --output ./output
+
+# AMD GPU
+bash scripts/docker_inference.sh --backend rocm --input <input> --model <model>
+
+# Intel GPU
+bash scripts/docker_inference.sh --backend intel --input <input> --model <model>
+```
+
+#### Development with Jupyter
+
+```bash
+# Start Jupyter Lab (NVIDIA by default)
+bash scripts/docker_dev.sh
+
+# With specific backend
+docker-compose up train-cuda   # NVIDIA
+docker-compose up train-rocm   # AMD
+docker-compose up train-intel  # Intel
+```
+
+Access Jupyter at `http://localhost:8888`
+
+#### Docker Compose Services
+
+```bash
+# Start specific service
+docker-compose -f docker/docker-compose.yml up -d train-cuda       # Training with NVIDIA GPU
+docker-compose -f docker/docker-compose.yml up -d train-rocm       # Training with AMD GPU
+docker-compose -f docker/docker-compose.yml up -d train-intel      # Training with Intel GPU
+docker-compose -f docker/docker-compose.yml up -d inference-cuda   # Inference with NVIDIA GPU
+
+# View logs
+docker-compose -f docker/docker-compose.yml logs -f train-cuda
+
+# Stop services
+docker-compose -f docker/docker-compose.yml down
+```
+
+#### GPU Backend Requirements
+
+**NVIDIA (CUDA)**
+- NVIDIA GPU with CUDA 12.1+ support
+- nvidia-docker2 runtime
+- Install: `sudo apt-get install nvidia-docker2`
+
+**AMD (ROCm)**
+- AMD GPU (Vega, RDNA, or newer)
+- ROCm 5.7+ installed
+- Install: [ROCm Installation Guide](https://rocm.docs.amd.com/)
+
+**Intel (OneAPI)**
+- Intel integrated GPU (11th gen or newer) or Arc GPU
+- Intel GPU drivers
+- Install: [Intel GPU Drivers](https://dgpu-docs.intel.com/)
+
 ## Dataset
 
 This project employs an open-source data strategy to ensure both generalization against academic benchmarks and reproducibility. The model is pre-trained on the public LUNA16 dataset (a subset of LIDC-IDRI).
@@ -96,10 +202,27 @@ PIVOT/
 │   └── processed/        # Preprocessed data
 │       ├── train/        # Training data
 │       └── val/          # Validation data
+├── docker/                # Docker configuration
+│   ├── Dockerfile.train.cuda       # NVIDIA training image
+│   ├── Dockerfile.train.rocm       # AMD training image
+│   ├── Dockerfile.train.intel      # Intel training image
+│   ├── Dockerfile.inference.cuda   # NVIDIA inference image
+│   ├── Dockerfile.inference.rocm   # AMD inference image
+│   ├── Dockerfile.inference.intel  # Intel inference image
+│   ├── docker-compose.yml          # Docker orchestration
+│   ├── .dockerignore               # Docker ignore patterns
+│   └── requirements-gpu.txt        # GPU backend info
 ├── docs/                  # Documentation
+│   ├── DOCKER.md         # Docker guide
+│   └── CONTRIBUTING.md   # Contribution guidelines
 ├── scripts/               # Utility scripts
 │   ├── setup_env.sh      # Environment setup
-│   └── download_luna16.sh # Dataset download helper
+│   ├── download_luna16.sh # Dataset download helper
+│   ├── docker_build.sh   # Build Docker images
+│   ├── docker_train.sh   # Run training in Docker
+│   ├── docker_inference.sh # Run inference in Docker
+│   ├── docker_dev.sh     # Development environment
+│   └── detect_gpu.sh     # GPU backend detection
 ├── src/                   # Source code
 │   ├── data/             # Data processing modules
 │   │   ├── dataset.py    # Dataset classes
@@ -114,15 +237,16 @@ PIVOT/
 │   │   └── logger.py     # Logging utilities
 │   └── config/           # Configuration management
 ├── tests/                 # Test suite
-├── .githooks/            # Custom git hooks
-│   └── check_imports.py  # Import validation hook
+├── .editorconfig         # Editor configuration
+├── .env.example          # Environment variables template
+├── .gitignore            # Git ignore patterns
+├── .pre-commit-config.yaml # Pre-commit hooks
 ├── requirements.txt       # Production dependencies
 ├── requirements-dev.txt   # Development dependencies
 ├── setup.py              # Package installation
 ├── pyproject.toml        # Tool configuration
 ├── Makefile              # Build automation
-└── .pre-commit-config.yaml # Pre-commit hooks
-
+└── MANIFEST.in           # Package distribution rules
 ```
 
 ## Data Directory Structure

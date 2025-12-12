@@ -1,0 +1,65 @@
+# Dockerfile for PIVOT Inference
+# Lightweight image optimized for model inference
+
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    CUDA_HOME=/usr/local/cuda
+
+LABEL maintainer="PIVOT Team" \
+      description="Lightweight Docker image for PIVOT inference"
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.10 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
+    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+# Upgrade pip
+RUN pip install --upgrade pip setuptools wheel
+
+# Set working directory
+WORKDIR /app
+
+# Copy only production requirements
+COPY requirements.txt ./
+
+# Install only production dependencies (excluding dev dependencies)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy only necessary source files
+COPY src/ ./src/
+COPY configs/ ./configs/
+COPY setup.py ./
+
+# Install the package
+RUN pip install --no-cache-dir .
+
+# Create directories for models and outputs
+RUN mkdir -p /app/models /app/input /app/output
+
+# Set up permissions
+RUN chmod -R 777 /app/models /app/input /app/output
+
+# Expose port for API server
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import torch; import monai" || exit 1
+
+# Default command runs the inference script
+CMD ["python", "-m", "inference.main", "--help"]
