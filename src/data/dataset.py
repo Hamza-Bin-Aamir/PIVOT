@@ -1,7 +1,7 @@
 """Dataset classes for loading and batching CT scan data."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -19,7 +19,7 @@ class LUNADataset(Dataset):
         data_dir: Path,
         split: str = "train",
         patch_size: tuple = (96, 96, 96),
-        transform: Optional[Any] = None,
+        transform: Any | None = None,
     ):
         """Initialize LUNA dataset.
 
@@ -37,7 +37,7 @@ class LUNADataset(Dataset):
         # Load file list
         self.samples = self._load_samples()
 
-    def _load_samples(self) -> List[Path]:
+    def _load_samples(self) -> list[Path]:
         """Load list of sample files."""
         split_dir = self.data_dir / self.split
         samples = list(split_dir.glob("*.npy"))
@@ -47,7 +47,7 @@ class LUNADataset(Dataset):
         """Return dataset size."""
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         """Get a single sample.
 
         Args:

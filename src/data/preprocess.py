@@ -8,7 +8,6 @@ This module implements the preprocessing pipeline described in the README:
 """
 
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 import SimpleITK as sitk
@@ -16,7 +15,7 @@ import SimpleITK as sitk
 
 def resample_to_isotropic(
     image: sitk.Image,
-    target_spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0),
     interpolator: int = sitk.sitkLinear,
 ) -> sitk.Image:
     """Resample CT scan to isotropic resolution.
@@ -34,7 +33,7 @@ def resample_to_isotropic(
 
     new_size = [
         int(round(osz * osp / nsp))
-        for osz, osp, nsp in zip(original_size, original_spacing, target_spacing)
+        for osz, osp, nsp in zip(original_size, original_spacing, target_spacing, strict=True)
     ]
 
     resample = sitk.ResampleImageFilter()
@@ -105,7 +104,7 @@ def normalize_to_range(
 
 def preprocess_ct_scan(
     input_path: Path,
-    target_spacing: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0),
     window_center: int = -600,
     window_width: int = 1500,
 ) -> np.ndarray:

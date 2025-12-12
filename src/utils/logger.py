@@ -2,12 +2,11 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 
 def setup_logger(
     name: str,
-    log_file: Optional[Path] = None,
+    log_file: Path | None = None,
     level: int = logging.INFO,
 ) -> logging.Logger:
     """Set up a logger with file and console handlers.

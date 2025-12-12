@@ -11,8 +11,8 @@ help:
 	@echo "  install-dev     - Install development dependencies"
 	@echo "  setup           - Run full environment setup"
 	@echo "  test            - Run tests with pytest"
-	@echo "  lint            - Run linting checks (flake8, mypy)"
-	@echo "  format          - Format code with black and isort"
+	@echo "  lint            - Run linting checks (ruff, mypy)"
+	@echo "  format          - Format code with ruff"
 	@echo "  clean           - Clean up build artifacts and cache files"
 	@echo ""
 	@echo "Docker targets (set GPU_BACKEND=cuda|rocm|intel, default: cuda):"
@@ -34,27 +34,29 @@ help:
 	@echo ""
 
 install:
-	pip install -r requirements.txt
-	pip install -e .
+	uv sync
 
 install-dev:
-	pip install -r requirements.txt
-	pip install -r requirements-dev.txt
-	pip install -e .
+	uv sync --all-extras
 
 setup:
-	bash scripts/setup_env.sh
+	@echo "Setting up PIVOT development environment with uv..."
+	@command -v uv >/dev/null 2>&1 || { echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; }
+	uv sync --all-extras
+	uv run pre-commit install --hook-type commit-msg
+	uv run pre-commit install
+	@echo "Setup complete!"
 
 test:
-	pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+	uv run pytest tests/ -v --cov=src --cov-report=html --cov-report=term
 
 lint:
-	flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
-	mypy src/
+	uv run ruff check src/ tests/ scripts/
+	uv run mypy src/
 
 format:
-	black src/ tests/ scripts/
-	isort src/ tests/ scripts/
+	uv run ruff format src/ tests/ scripts/
+	uv run ruff check --fix src/ tests/ scripts/
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

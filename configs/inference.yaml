@@ -1,0 +1,26 @@
+# Inference-Only Configuration
+# Optimized for deployment and inference
+
+experiment_name: inference_only
+output_dir: outputs/inference
+
+inference:
+  # Batch processing
+  batch_size: 1
+
+  # Sliding window parameters
+  sliding_window: true
+  overlap: 0.75  # High overlap for better quality
+
+  # Post-processing
+  threshold: 0.5
+  save_probabilities: true
+
+  # Test-time augmentation
+  tta: true  # Flip and rotate for ensemble
+
+# Hardware
+hardware:
+  device: cuda
+  mixed_precision: true
+  gpu_ids: [0]

@@ -1,0 +1,119 @@
+# High Performance Configuration
+# Optimized for production training on high-end GPUs
+
+experiment_name: high_performance
+output_dir: outputs/high_performance
+
+train:
+  # Training
+  epochs: 300
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 2  # Effective batch size = 8
+  early_stopping_patience: 30
+
+  # Data
+  data_dir: data/processed
+  batch_size: 4
+  num_workers: 8
+
+  # Model
+  model:
+    type: unet3d
+    in_channels: 1
+    out_channels: 1
+    init_features: 32
+    depth: 5  # Deeper model
+    dropout: 0.1
+    batch_norm: true
+
+  # Preprocessing
+  preprocessing:
+    target_spacing: [1.0, 1.0, 1.0]
+    window_center: -600
+    window_width: 1500
+    patch_size: [128, 128, 128]  # Larger patches
+    normalize: true
+
+  # Augmentation
+  augmentation:
+    enabled: true
+    random_flip_prob: 0.5
+    random_rotate_prob: 0.5
+    random_scale_prob: 0.3
+    random_intensity_shift_prob: 0.3
+    random_intensity_scale_prob: 0.3
+    elastic_deform_prob: 0.2
+    gaussian_noise_prob: 0.1
+    gaussian_smooth_prob: 0.1
+
+  # Optimizer
+  optimizer:
+    type: adamw  # AdamW for better regularization
+    lr: 0.0001
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+
+  # Scheduler
+  scheduler:
+    type: cosine
+    min_lr: 0.000001
+    warmup_epochs: 10
+    warmup_start_lr: 0.00001
+
+  # Loss
+  loss:
+    type: dice_focal  # Combined loss
+    smooth: 0.00001
+    focal_alpha: 0.25
+    focal_gamma: 2.0
+    reduction: mean
+
+  # Checkpointing
+  checkpoint:
+    checkpoint_dir: checkpoints/high_performance
+    save_every: 5
+    save_best: true
+    metric_to_track: val_dice
+    mode: max
+    save_last: true
+    max_checkpoints: 10
+
+  # Logging
+  logging:
+    log_dir: logs/high_performance
+    log_every: 10
+    tensorboard: true
+    console_log_level: INFO
+    file_log_level: DEBUG
+
+  # W&B
+  wandb:
+    enabled: true
+    project: pivot
+    entity: ""
+    tags: [high_performance, production]
+    resume: auto
+
+  # Validation
+  validation:
+    val_every: 5
+    compute_metrics: true
+    save_predictions: true
+    prediction_save_dir: predictions
+
+  # Hardware
+  hardware:
+    device: cuda
+    mixed_precision: true
+    cudnn_benchmark: true
+    deterministic: false
+    seed: 42
+
+# Inference
+inference:
+  batch_size: 1
+  overlap: 0.75  # Higher overlap for better results
+  threshold: 0.5
+  sliding_window: true
+  save_probabilities: true
+  tta: true  # Test-time augmentation

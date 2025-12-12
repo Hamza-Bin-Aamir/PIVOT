@@ -1,5 +1,5 @@
-# Dockerfile for PIVOT Inference - Intel GPU Support
-# Lightweight image optimized for model inference on Intel GPUs
+# Dockerfile for PIVOT Inference - Intel GPU
+# Lightweight image optimized for model inference with Intel GPU
 
 FROM intel/oneapi-basekit:2024.0.0-runtime-ubuntu22.04
 
@@ -7,7 +7,7 @@ FROM intel/oneapi-basekit:2024.0.0-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    UV_SYSTEM_PYTHON=1
 
 LABEL maintainer="PIVOT Team" \
       description="Lightweight Docker image for PIVOT inference with Intel GPU support"
@@ -16,6 +16,7 @@ LABEL maintainer="PIVOT Team" \
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
+    curl \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -24,55 +25,38 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.10 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
-    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 
-# Upgrade pip
-RUN pip install --upgrade pip setuptools wheel
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
 
 # Install PyTorch with Intel GPU support
-RUN pip install --no-cache-dir \
+RUN uv pip install --system \
     torch==2.1.0.post0 \
     torchvision==0.16.0.post0 \
     intel-extension-for-pytorch==2.1.0+xpu \
     --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
 
-# Copy only production requirements
-COPY requirements.txt ./
-
-# Remove torch/torchvision from requirements (already installed)
-RUN grep -v "^torch" requirements.txt > requirements-noarch.txt && \
-    mv requirements-noarch.txt requirements.txt
-
-# Install only production dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
 # Copy only necessary source files
+COPY pyproject.toml ./
 COPY src/ ./src/
 COPY configs/ ./configs/
-COPY setup.py ./
 
-# Install the package
-RUN pip install --no-cache-dir .
+# Install dependencies with uv
+RUN uv pip install --system .
 
-# Create directories for models and outputs
-RUN mkdir -p /app/models /app/input /app/output
-
-# Set up permissions
-RUN chmod -R 777 /app/models /app/input /app/output
-
-# Expose port for API server
-EXPOSE 8000
+# Create directories for input/output
+RUN mkdir -p /app/input /app/output /app/models
 
 # Source OneAPI environment
-RUN echo "source /opt/intel/oneapi/setvars.sh --force" >> /root/.bashrc
+RUN echo "source /opt/intel/oneapi/setvars.sh" >> ~/.bashrc
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import torch; import intel_extension_for_pytorch as ipex; import monai" || exit 1
+# Expose port for API
+EXPOSE 8000
 
-# Default command runs the inference script
-CMD ["python", "-m", "inference.main", "--help"]
+# Default command
+CMD ["/bin/bash", "-l", "-c", "python -m inference.main"]

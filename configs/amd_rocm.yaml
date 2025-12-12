@@ -1,0 +1,108 @@
+# AMD ROCm Configuration
+# Optimized for AMD GPUs (Radeon, Instinct)
+
+experiment_name: amd_rocm
+output_dir: outputs/amd_rocm
+
+train:
+  # Training
+  epochs: 100
+  gradient_clip: 1.0
+  gradient_accumulation_steps: 1
+
+  # Data
+  data_dir: data/processed
+  batch_size: 2  # Conservative for stability
+  num_workers: 4
+
+  # Model
+  model:
+    type: unet3d
+    in_channels: 1
+    out_channels: 1
+    init_features: 32
+    depth: 4
+    dropout: 0.0
+    batch_norm: true
+
+  # Preprocessing
+  preprocessing:
+    target_spacing: [1.0, 1.0, 1.0]
+    window_center: -600
+    window_width: 1500
+    patch_size: [96, 96, 96]
+    normalize: true
+
+  # Augmentation
+  augmentation:
+    enabled: true
+    random_flip_prob: 0.5
+    random_rotate_prob: 0.5
+    random_scale_prob: 0.5
+    random_intensity_shift_prob: 0.5
+    random_intensity_scale_prob: 0.5
+
+  # Optimizer
+  optimizer:
+    type: adam
+    lr: 0.0001
+    weight_decay: 0.00001
+    betas: [0.9, 0.999]
+
+  # Scheduler
+  scheduler:
+    type: cosine
+    min_lr: 0.000001
+    warmup_epochs: 0
+
+  # Loss
+  loss:
+    type: dice
+    smooth: 0.00001
+    reduction: mean
+
+  # Checkpointing
+  checkpoint:
+    checkpoint_dir: checkpoints/amd_rocm
+    save_every: 10
+    save_best: true
+    metric_to_track: val_dice
+    mode: max
+    save_last: true
+    max_checkpoints: 5
+
+  # Logging
+  logging:
+    log_dir: logs/amd_rocm
+    log_every: 10
+    tensorboard: true
+    console_log_level: INFO
+    file_log_level: DEBUG
+
+  # W&B
+  wandb:
+    enabled: false
+    project: pivot
+
+  # Validation
+  validation:
+    val_every: 1
+    compute_metrics: true
+    save_predictions: false
+
+  # Hardware
+  hardware:
+    device: cuda  # ROCm uses CUDA backend
+    mixed_precision: true  # ROCm supports AMP
+    cudnn_benchmark: true
+    deterministic: false
+    seed: 42
+
+# Inference
+inference:
+  batch_size: 1
+  overlap: 0.5
+  threshold: 0.5
+  sliding_window: true
+  save_probabilities: false
+  tta: false

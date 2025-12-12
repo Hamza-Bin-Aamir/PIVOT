@@ -65,22 +65,133 @@ BREAKING CHANGE: The /metrics endpoint now returns data in a different JSON stru
 Clients need to update their parsing logic.
 ```
 
+## Development Setup
+
+### Installing uv
+
+This project uses **`uv`** as the package manager for faster, more reliable dependency management.
+
+1. Install uv:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+2. Verify installation:
+   ```bash
+   uv --version
+   ```
+
+### Setting Up the Development Environment
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Hamza-Bin-Aamir/PIVOT.git
+   cd PIVOT
+   ```
+
+2. Install all dependencies (including dev tools):
+   ```bash
+   uv sync --all-extras
+   ```
+
+   Or use the Makefile:
+   ```bash
+   make setup
+   ```
+
+3. Install pre-commit hooks:
+   ```bash
+   uv run pre-commit install --hook-type commit-msg
+   uv run pre-commit install
+   ```
+
+### GPU-Specific Installation
+
+#### CPU Only (Default)
+```bash
+uv sync
+```
+
+#### NVIDIA GPU (CUDA)
+```bash
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+uv sync
+```
+
+#### AMD GPU (ROCm)
+```bash
+uv pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm5.7
+uv sync
+```
+
+#### Intel GPU (OneAPI)
+```bash
+uv pip install torch torchvision intel-extension-for-pytorch \
+  --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/xpu/us/
+uv sync
+```
+
+### Running Commands with uv
+
+All Python commands should be run through `uv run`:
+
+```bash
+# Run tests
+uv run pytest
+
+# Run formatter and linter (Ruff)
+uv run ruff format src/
+uv run ruff check src/
+uv run ruff check --fix src/  # Auto-fix issues
+
+# Run type checker
+uv run mypy src/
+
+# Run training
+uv run python -m train.main --config configs/train.yaml
+
+# Run inference
+uv run python -m inference.main --input scan.mhd
+```
+
+Or use the Makefile shortcuts:
+```bash
+make test      # Run tests
+make format    # Format code with ruff
+make lint      # Run linters
+```
+
+### Adding New Dependencies
+
+```bash
+# Add a production dependency
+uv add <package-name>
+
+# Add a development dependency
+uv add --dev <package-name>
+
+# Add with specific version
+uv add "package-name>=1.0.0"
+
+# Add from a specific index (e.g., PyTorch)
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121
+```
+
+The dependencies will be automatically added to `pyproject.toml` and `uv.lock`.
+
 ## Setting Up Pre-commit
 
-1. Install pre-commit:
+Pre-commit hooks are automatically installed when running `make setup`. To install manually:
+
+1. Install the git hooks:
    ```bash
-   pip install pre-commit
+   uv run pre-commit install --hook-type commit-msg
+   uv run pre-commit install  # for other hooks
    ```
 
-2. Install the git hooks:
+2. (Optional) Run against all files:
    ```bash
-   pre-commit install --hook-type commit-msg
-   pre-commit install  # for other hooks
-   ```
-
-3. (Optional) Run against all files:
-   ```bash
-   pre-commit run --all-files
+   uv run pre-commit run --all-files
    ```
 
 ## Commit Message Validation

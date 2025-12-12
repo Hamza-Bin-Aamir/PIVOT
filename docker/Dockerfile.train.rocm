@@ -7,8 +7,8 @@ FROM rocm/pytorch:rocm5.7_ubuntu22.04_py3.10_pytorch_2.0.1
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HSA_OVERRIDE_GFX_VERSION=10.3.0
+    HSA_OVERRIDE_GFX_VERSION=10.3.0 \
+    UV_SYSTEM_PYTHON=1
 
 LABEL maintainer="PIVOT Team" \
       description="Docker image for PIVOT training pipeline with AMD GPU support"
@@ -27,25 +27,20 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
 # Set working directory
 WORKDIR /workspace
 
-# Copy requirements files
-COPY requirements.txt requirements-dev.txt ./
+# Copy project files
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY configs/ ./configs/
 
-# Remove torch/torchvision from requirements (already installed in base image)
-RUN grep -v "^torch" requirements.txt > requirements-noarch.txt && \
-    mv requirements-noarch.txt requirements.txt
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-dev.txt
-
-# Copy the entire project
-COPY . .
-
-# Install the package in editable mode
-RUN pip install -e .
+# Install dependencies with uv (ROCm PyTorch already in base image)
+RUN uv pip install --system -e .
 
 # Create necessary directories
 RUN mkdir -p /workspace/data/raw \

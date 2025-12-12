@@ -1,4 +1,4 @@
-# Dockerfile for PIVOT Training
+# Dockerfile for PIVOT Training with NVIDIA CUDA
 # This image includes all dependencies needed for training deep learning models
 
 FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
@@ -7,11 +7,11 @@ FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    CUDA_HOME=/usr/local/cuda
+    CUDA_HOME=/usr/local/cuda \
+    UV_SYSTEM_PYTHON=1
 
 LABEL maintainer="PIVOT Team" \
-      description="Docker image for PIVOT training pipeline"
+      description="Docker image for PIVOT training pipeline with NVIDIA CUDA support"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -31,27 +31,23 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.10 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
-    update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 
-# Upgrade pip
-RUN pip install --upgrade pip setuptools wheel
+# Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Set working directory
 WORKDIR /workspace
 
-# Copy requirements files
-COPY requirements.txt requirements-dev.txt ./
+# Copy project files
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY configs/ ./configs/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-dev.txt
-
-# Copy the entire project
-COPY . .
-
-# Install the package in editable mode
-RUN pip install -e .
+# Install dependencies with uv (CUDA version)
+RUN uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cu121
+RUN uv pip install --system -e .
 
 # Create necessary directories
 RUN mkdir -p /workspace/data/raw \
