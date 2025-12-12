@@ -4,9 +4,9 @@ This repository contains resources and tools for the Pulmonary Imaging for Volum
 
 ## Dataset
 
-This project employs a dual-source data strategy to ensure both generalization against academic benchmarks and specificity to clinical environments. The model is pre-trained on the public LUNA16 dataset (a subset of LIDC-IDRI) and fine-tuned on private clinical data.
+This project employs an open-source data strategy to ensure both generalization against academic benchmarks and reproducibility. The model is pre-trained on the public LUNA16 dataset (a subset of LIDC-IDRI).
 
-### 1. Public Benchmark: LUNA16 / LIDC-IDRI
+### Public Benchmark: LUNA16 / LIDC-IDRI
 
 The primary training and validation are conducted using the **LUNA16 (LUng Nodule Analysis 2016)** dataset, which is a curated subset of the larger **LIDC-IDRI** database.
 
@@ -14,14 +14,6 @@ The primary training and validation are conducted using the **LUNA16 (LUng Nodul
 - **Composition:** 888 CT scans with slice thickness ≤ 2.5mm.
 - **Annotations:** 1,186 nodules marked as "positive" (accepted by at least 3 out of 4 radiologists).
 - **Inclusion Criteria:** Nodules with a diameter ≥ 3mm. Non-nodules, nodules < 3mm, and nodules with ambiguous consensus are excluded from the positive class during training but may be used for hard negative mining.
-
-### 2. Private Clinical Data (Optional/Confidential)
-
-For domain adaptation, the model supports fine-tuning on DICOM datasets provided by partner institutions.
-
-- **Format:** Standard DICOM series.
-- **Annotations:** Radiologist-verified bounding boxes or segmentation masks.
-- **Note:** Due to patient privacy (HIPAA/GDPR), private datasets are **not** included in this repository.
 
 ## Preprocessing Pipeline
 
