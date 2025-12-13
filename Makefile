@@ -1,5 +1,7 @@
 # Makefile for PIVOT project
 
+SHELL := /usr/bin/env bash
+
 .PHONY: help install install-dev test lint format clean setup docker-detect-gpu docker-build docker-build-cuda docker-build-rocm docker-build-intel docker-train docker-inference docker-dev docker-clean
 
 help:

@@ -77,6 +77,9 @@ PIVOT supports multiple GPU backends through Docker:
 bash scripts/detect_gpu.sh
 ```
 
+> **Note**: GPU detection inspects Linux device nodes. On Windows, run this
+> command inside Git Bash (with WSL) or on a Linux host.
+
 #### Build Docker Images
 
 ```bash
@@ -128,10 +131,12 @@ bash scripts/docker_inference.sh --backend intel --input <input> --model <model>
 # Start Jupyter Lab (NVIDIA by default)
 bash scripts/docker_dev.sh
 
-# With specific backend
-docker-compose up train-cuda   # NVIDIA
-docker-compose up train-rocm   # AMD
-docker-compose up train-intel  # Intel
+# With specific backend and custom port
+bash scripts/docker_dev.sh 8888 rocm
+bash scripts/docker_dev.sh 9000 intel
+
+# Windows PowerShell users: prefix with bash
+bash scripts/docker_dev.sh 8888 cuda
 ```
 
 Access Jupyter at `http://localhost:8888`

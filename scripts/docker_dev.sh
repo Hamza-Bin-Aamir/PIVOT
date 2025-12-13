@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck shell=bash
 # Start development environment with Jupyter and multi-GPU backend support
 
-set -e
+set -euo pipefail
 
 PORT=${1:-8888}
 GPU_BACKEND=${2:-cuda}
@@ -23,20 +24,40 @@ echo "GPU Backend: $GPU_BACKEND"
 echo "Jupyter will be available at: http://localhost:$PORT"
 echo ""
 
+if command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD=(docker-compose)
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD=(docker compose)
+else
+    echo "Error: Docker Compose is not installed. Install docker-compose or Docker Compose v2." >&2
+    exit 1
+fi
+
+DOCKER_COMPOSE_STR=${DOCKER_COMPOSE_CMD[*]}
+
 # Build image if it doesn't exist
 if [[ "$(docker images -q pivot-train-$GPU_BACKEND:latest 2> /dev/null)" == "" ]]; then
     echo "Training image not found. Building..."
-    ./scripts/docker_build.sh --train --backend $GPU_BACKEND
+    ./scripts/docker_build.sh --train --backend "$GPU_BACKEND"
 fi
 
 # Update docker-compose to use the right backend
-# Note: We'll use the default dev service which uses CUDA
-# For other backends, users should use docker-compose directly
+DEV_SERVICE="dev"
+
+case "$GPU_BACKEND" in
+    cuda)
+        DEV_SERVICE="dev"
+        ;;
+    rocm)
+        DEV_SERVICE="dev-rocm"
+        ;;
+    intel)
+        DEV_SERVICE="dev-intel"
+        ;;
+esac
+
 if [[ "$GPU_BACKEND" != "cuda" ]]; then
-    echo "Note: For $GPU_BACKEND backend, use: docker-compose -f docker/docker-compose.yml up train-$GPU_BACKEND"
-    echo "Then run Jupyter manually inside the container:"
-    echo "  docker-compose -f docker/docker-compose.yml exec train-$GPU_BACKEND jupyter lab --ip=0.0.0.0 --port=$PORT --no-browser --allow-root"
-else
-    # Start dev container
-    docker-compose -f docker/docker-compose.yml up dev
+    echo "Launching $DEV_SERVICE service for backend '$GPU_BACKEND'"
 fi
+
+"${DOCKER_COMPOSE_CMD[@]}" -f docker/docker-compose.yml up "$DEV_SERVICE"

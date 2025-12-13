@@ -167,6 +167,8 @@ PIVOT runs the same way on Linux, macOS, and Windows. Follow the guidance below
 to get a consistent development environment regardless of your host OS.
 
 ### Linux (Ubuntu, Fedora, Arch)
+- Preferred shell: `/usr/bin/env bash` (already configured as the Makefile
+   shell). Any POSIX-compliant shell works for `uv` commands.
 - Install uv via the install script or your package manager (`pacman -S uv`,
    `pipx install uv`).
 - Ensure system packages needed for SimpleITK are present (e.g. `libgl1`,
@@ -174,19 +176,26 @@ to get a consistent development environment regardless of your host OS.
 - Use `make setup` to verify Python toolchain and pre-commit hooks.
 
 ### macOS (Intel & Apple Silicon)
-- Prefer Homebrew: `brew install uv cmake ninja hdf5`.
+- Preferred shell: `bash` (either system Bash or Homebrew’s `bash`).
+- Install with Homebrew: `brew install uv cmake ninja hdf5 bash`.
 - Apple Silicon users should run `export PYTORCH_ENABLE_MPS_FALLBACK=1` before
    training; our CLI tools pick up the device automatically.
-- Gate GPU work behind Docker or remote runners if you need CUDA/ROCm features;
-   the CPU pipeline and preprocessing tests run natively.
+- For CUDA/ROCm workflows rely on Docker (see `docker/` docs) or remote GPUs.
 
 ### Windows 11+
-- Install uv through the official MSI or via `winget install astral-sh.uv`.
-- Use the Developer PowerShell or Git Bash so `make` targets resolve correctly;
-   alternatively run `uv run python scripts/manage_config.py ...` directly.
-- If you need a POSIX shell (for our bash scripts), enable WSL 2 with Ubuntu and
-   mount your workspace (e.g. `/mnt/c/Users/<user>/PIVOT`). All tooling works out
-   of the box inside WSL.
+- Preferred shells:
+   - **Git Bash**: full support for Makefile + scripts (bundled with Git for
+      Windows).
+   - **Developer PowerShell**: run Python commands directly (`uv run ...`) when
+      `make` is unavailable.
+- Install uv via MSI or `winget install astral-sh.uv`.
+- If Git Bash is not an option, enable **WSL 2** with Ubuntu. The repository and
+   scripts behave identically to Linux when run inside WSL (`/mnt/c/...`).
+- In PowerShell, call scripts explicitly with `bash scripts/<name>.sh` to ensure
+   they execute under the bundled GNU Bash.
+- `scripts/docker_dev.sh` automatically selects `dev`, `dev-rocm`, or
+   `dev-intel` services; pass `bash scripts/docker_dev.sh 8888 rocm` to launch
+   the ROCm stack from Windows.
 
 **Common steps across platforms**
 - Run `uv sync --all-extras` once; subsequent `uv run ...` reuse the virtualenv.
