@@ -16,6 +16,16 @@ Comprehensive examples of loading various medical imaging formats:
 - **LIDC-IDRI Workflow**: Complete example for LIDC-IDRI dataset
 - **Metadata Analysis**: Extract and analyze scan metadata
 
+### `resample_medical_scan.py`
+
+End-to-end isotropic resampling workflow:
+
+- **Automatic Loading**: Use `MedicalScanLoader` to ingest scans or DICOM series
+- **Shape Forecasting**: Estimate output shape before running the resampler
+- **Intensity Preservation**: Resample images while preserving HU ranges
+- **Mask Support**: Resample aligned segmentation masks using nearest neighbour
+- **Safety Guard**: Configure `--max-voxels` to avoid out-of-memory scenarios
+
 ## Quick Start
 
 ```bash
