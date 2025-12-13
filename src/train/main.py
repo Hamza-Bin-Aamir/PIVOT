@@ -23,5 +23,5 @@ def main():
     print("Training not yet implemented")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
     main()

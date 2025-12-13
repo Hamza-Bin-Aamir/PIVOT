@@ -256,6 +256,13 @@ The primary training and validation are conducted using the **LUNA16 (LUng Nodul
 - **Annotations:** 1,186 nodules marked as "positive" (accepted by at least 3 out of 4 radiologists).
 - **Inclusion Criteria:** Nodules with a diameter ≥ 3mm. Non-nodules, nodules < 3mm, and nodules with ambiguous consensus are excluded from the positive class during training but may be used for hard negative mining.
 
+### Annotation Metadata Utilities
+
+Use the helpers in `src/data/annotations.py` to transform both the LUNA16 CSV
+and the richer LIDC-IDRI XML reports into immutable dataclasses ready for data
+prep and ground-truth generation. See [docs/ANNOTATIONS.md](docs/ANNOTATIONS.md)
+for usage examples, filtering options, and integration tips.
+
 ## Preprocessing Pipeline
 
 Raw CT data (DICOM or MHD) undergoes a rigorous 3D preprocessing pipeline before entering the network. The pipeline is implemented in `src/data/preprocess.py`.
