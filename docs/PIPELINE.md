@@ -45,7 +45,8 @@ API, Dashboard, Deployment, Ops (#67-#127)
 - **Dataset wrapper**: Balanced sampling, caching, multiprocessing (Issue #8).
 - **Quality assurance**: Scan completeness, artifact detection (Issue #9).
 **Annotation parsing**: LUNA16 CSV, LIDC-IDRI XML, triage scoring, heatmaps (Issues #10-#13). The
-current branch delivers the CSV/XML readers described in [ANNOTATIONS.md](ANNOTATIONS.md).
+current branch delivers the CSV/XML readers, triage scoring, and center heatmap
+utilities documented in [ANNOTATIONS.md](ANNOTATIONS.md).
 
 ### Intensity Normalisation (Issue #6)
 

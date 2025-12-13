@@ -15,6 +15,7 @@ from .augment import (
     build_default_augmentation_pipeline,
 )
 from .dataset import LUNADataset
+from .heatmap import HeatmapConfig, generate_center_heatmap
 from .intensity import (
     HistogramMethod,
     NormalizationStats,
@@ -35,14 +36,24 @@ from .resampling import (
     resample_mask,
     resample_to_isotropic,
 )
+from .triage import (
+    TriageScoreBreakdown,
+    aggregate_lidc_characteristics,
+    compute_triage_score,
+)
 
 __all__ = [
     # Annotations
     "LUNA16Annotation",
     "group_annotations_by_series",
     "parse_luna16_annotations",
+    "TriageScoreBreakdown",
+    "aggregate_lidc_characteristics",
+    "compute_triage_score",
     # Dataset
     "LUNADataset",
+    "HeatmapConfig",
+    "generate_center_heatmap",
     # Augmentations
     "AugmentationConfig",
     "Compose",
