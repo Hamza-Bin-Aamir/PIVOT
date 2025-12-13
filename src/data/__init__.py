@@ -1,7 +1,30 @@
 """Data processing, loading, and augmentation modules."""
 
-# Module imports will be added here when needed
-# from .dataset import LUNADataset
-# from .preprocess import preprocess_ct_scan
+from .dataset import LUNADataset
+from .loader import (
+    DICOMLoader,
+    MedicalScanLoader,
+    NIfTILoader,
+    ScanMetadata,
+)
+from .preprocess import (
+    apply_hu_windowing,
+    normalize_to_range,
+    preprocess_ct_scan,
+    resample_to_isotropic,
+)
 
-__all__ = []
+__all__ = [
+    # Dataset
+    "LUNADataset",
+    # Loaders
+    "DICOMLoader",
+    "MedicalScanLoader",
+    "NIfTILoader",
+    "ScanMetadata",
+    # Preprocessing
+    "apply_hu_windowing",
+    "normalize_to_range",
+    "preprocess_ct_scan",
+    "resample_to_isotropic",
+]
