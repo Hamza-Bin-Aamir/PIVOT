@@ -137,5 +137,5 @@ def main():
     # TODO: Implement batch processing logic
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
     main()
