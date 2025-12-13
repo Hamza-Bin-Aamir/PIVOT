@@ -77,3 +77,18 @@ def test_normalize_intensity_rejects_empty_volume() -> None:
 def test_clip_hounsfield_validates_window() -> None:
     with pytest.raises(ValueError):
         clip_hounsfield(np.zeros((2, 2), dtype=np.float32), window_min=10.0, window_max=5.0)
+
+
+def test_normalize_intensity_rejects_invalid_target_range() -> None:
+    volume = np.array([[-1000.0, 0.0], [200.0, 400.0]], dtype=np.float32)
+
+    with pytest.raises(ValueError):
+        normalize_intensity(volume, target_range=(1.0, 0.5))
+
+
+def test_normalize_intensity_handles_degenerate_window() -> None:
+    volume = np.array([[5.0, 5.0]], dtype=np.float32)
+    window = (5.0, 5.000000000001)
+    result = normalize_intensity(volume, window=window, target_range=(0.0, 1.0))
+
+    assert np.allclose(result, 0.0)

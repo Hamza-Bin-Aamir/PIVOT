@@ -8,17 +8,27 @@ import yaml
 
 from src.config import (
     AugmentationConfig,
+    CheckpointConfig,
     Config,
     ConfigLoader,
     DataConfig,
     HardwareConfig,
     InferenceConfig,
+    LoggingConfig,
+    LossConfig,
     ModelConfig,
     OptimizerConfig,
     PreprocessingConfig,
+    SchedulerConfig,
+    TrainConfig,
+    ValidationConfig,
+    WandBConfig,
+    get_amd_rocm_config,
     get_default_train_config,
     get_fast_dev_config,
     get_high_performance_config,
+    get_intel_xpu_config,
+    get_multi_gpu_config,
 )
 
 
@@ -57,6 +67,10 @@ class TestModelConfig:
             ModelConfig(out_channels=-1)
         with pytest.raises(ValueError):
             ModelConfig(depth=0)
+        with pytest.raises(ValueError):
+            ModelConfig(init_features=0)
+        with pytest.raises(ValueError):
+            ModelConfig(dropout=1.0)
 
 
 class TestOptimizerConfig:
@@ -116,6 +130,64 @@ class TestPreprocessingConfig:
             PreprocessingConfig(target_spacing=(1.0, 1.0))  # Must be 3D
         with pytest.raises(ValueError):
             PreprocessingConfig(patch_size=(96, 96))  # Must be 3D
+
+
+class TestSchedulerConfig:
+    """Tests for SchedulerConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            SchedulerConfig(min_lr=0)
+        with pytest.raises(ValueError):
+            SchedulerConfig(warmup_epochs=-1)
+
+
+class TestLossConfig:
+    """Tests for LossConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            LossConfig(smooth=-1.0)
+        with pytest.raises(ValueError):
+            LossConfig(reduction="invalid")
+
+
+class TestCheckpointConfig:
+    """Tests for CheckpointConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            CheckpointConfig(save_every=0)
+        with pytest.raises(ValueError):
+            CheckpointConfig(mode="median")
+        with pytest.raises(ValueError):
+            CheckpointConfig(max_checkpoints=0)
+
+
+class TestLoggingConfig:
+    """Tests for LoggingConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            LoggingConfig(console_log_level="TRACE")
+        with pytest.raises(ValueError):
+            LoggingConfig(file_log_level="TRACE")
+
+
+class TestWandBConfig:
+    """Tests for WandBConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            WandBConfig(resume="sometimes")
+
+
+class TestValidationConfig:
+    """Tests for ValidationConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            ValidationConfig(val_every=0)
 
 
 class TestConfigLoader:
@@ -263,6 +335,54 @@ class TestConfig:
         config = Config.from_dict(config_dict)
         assert config.train.optimizer.lr == 0.001
 
+    def test_from_dict_top_level_preprocessing(self):
+        """Top-level preprocessing overrides train config."""
+        config = Config.from_dict(
+            {
+                "preprocessing": {"target_spacing": (2.0, 2.0, 2.0)},
+            }
+        )
+
+        assert config.train.preprocessing.target_spacing == (2.0, 2.0, 2.0)
+
+    def test_merge_from_file(self, tmp_path):
+        """Test merging overrides from YAML file."""
+        config = Config()
+        override = {"experiment_name": "merged_from_file"}
+        override_path = tmp_path / "override.yaml"
+        with override_path.open("w", encoding="utf-8") as handle:
+            yaml.safe_dump(override, handle)
+
+        merged = config.merge_from_file(override_path)
+
+        assert merged.experiment_name == "merged_from_file"
+
+    def test_repr(self):
+        """Ensure repr contains experiment name."""
+        config = Config(experiment_name="repr_test")
+        assert "repr_test" in repr(config)
+
+
+class TestTrainConfig:
+    """Tests for TrainConfig."""
+
+    def test_validation(self):
+        with pytest.raises(ValueError):
+            TrainConfig(epochs=0)
+        with pytest.raises(ValueError):
+            TrainConfig(gradient_clip=0)
+        with pytest.raises(ValueError):
+            TrainConfig(gradient_accumulation_steps=0)
+
+    def test_to_dict_and_save(self, tmp_path):
+        config = TrainConfig()
+        data = config.to_dict()
+        assert data["epochs"] == 100
+
+        save_path = tmp_path / "train_config.yaml"
+        config.save(save_path)
+        assert save_path.exists()
+
 
 class TestDefaultConfigs:
     """Tests for default configuration templates."""
@@ -293,6 +413,21 @@ class TestDefaultConfigs:
         assert config_dict["train"]["epochs"] == 300
         assert config_dict["train"]["batch_size"] == 4
         assert config_dict["train"]["data"]["cache_rate"] == 1.0
+
+    def test_multi_gpu_config(self):
+        config = get_multi_gpu_config()
+        assert config["experiment_name"] == "multi_gpu"
+        assert config["train"]["hardware"]["gpu_ids"] == [0, 1, 2, 3]
+
+    def test_amd_rocm_config(self):
+        config = get_amd_rocm_config()
+        assert config["experiment_name"] == "amd_rocm"
+        assert config["train"]["hardware"]["device"] == "cuda"
+
+    def test_intel_xpu_config(self):
+        config = get_intel_xpu_config()
+        assert config["experiment_name"] == "intel_xpu"
+        assert config["train"]["hardware"]["device"] == "xpu"
 
 
 class TestAugmentationConfig:
