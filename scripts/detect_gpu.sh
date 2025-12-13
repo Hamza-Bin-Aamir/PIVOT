@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck shell=bash
 # Detect available GPU backend on the system
 
-set -e
+set -euo pipefail
 
 echo "PIVOT GPU Backend Detection"
 echo "==========================="
@@ -32,13 +33,16 @@ fi
 
 # Check for Intel GPU
 if [ -e /dev/dri ]; then
-    if lspci | grep -i "vga.*intel" &> /dev/null; then
+    if command -v lspci >/dev/null 2>&1 && lspci | grep -i "vga.*intel" &> /dev/null; then
         echo "✅ Intel GPU detected"
         lspci | grep -i "vga.*intel"
         if [ -z "$DETECTED_BACKEND" ]; then
             DETECTED_BACKEND="intel"
         fi
         echo ""
+    elif command -v powermetrics >/dev/null 2>&1 && uname | grep -qi darwin; then
+        echo "ℹ️  Intel GPU detection on macOS requires powermetrics access"
+        echo "    Run: sudo powermetrics --system-usage"
     fi
 fi
 

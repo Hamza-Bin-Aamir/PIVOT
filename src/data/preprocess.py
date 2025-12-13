@@ -1,16 +1,18 @@
-"""3D preprocessing pipeline for CT scans.
+"""3D preprocessing pipeline for CT scans."""
 
-This module implements the preprocessing pipeline described in the README:
-1. Resampling to isotropic resolution (1mm x 1mm x 1mm)
-2. HU windowing (Level: -600 HU, Width: 1500 HU)
-3. Normalization to [0, 1]
-4. Patch generation (96, 96, 96)
-"""
+from __future__ import annotations
 
 from pathlib import Path
 
 import numpy as np
 import SimpleITK as sitk
+
+from .intensity import (
+    HistogramMethod,
+    NormalizationStats,
+    clip_hounsfield,
+    normalize_intensity,
+)
 
 
 def resample_to_isotropic(
@@ -18,16 +20,8 @@ def resample_to_isotropic(
     target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0),
     interpolator: int = sitk.sitkLinear,
 ) -> sitk.Image:
-    """Resample CT scan to isotropic resolution.
+    """Resample CT scan to isotropic resolution."""
 
-    Args:
-        image: Input SimpleITK image
-        target_spacing: Target spacing in mm (default: 1mm x 1mm x 1mm)
-        interpolator: Interpolation method
-
-    Returns:
-        Resampled SimpleITK image
-    """
     original_spacing = image.GetSpacing()
     original_size = image.GetSize()
 
@@ -53,26 +47,11 @@ def apply_hu_windowing(
     window_center: int = -600,
     window_width: int = 1500,
 ) -> np.ndarray:
-    """Apply HU windowing to CT data.
+    """Apply HU windowing to CT data."""
 
-    Standard lung window:
-    - Center: -600 HU
-    - Width: 1500 HU
-    - Range: -1350 to +150 HU
-
-    Args:
-        array: Input array in HU
-        window_center: Window center (level) in HU
-        window_width: Window width in HU
-
-    Returns:
-        Windowed array
-    """
-    window_min = window_center - window_width // 2
-    window_max = window_center + window_width // 2
-
-    windowed = np.clip(array, window_min, window_max)
-    return windowed
+    window_min = float(window_center) - float(window_width) / 2.0
+    window_max = float(window_center) + float(window_width) / 2.0
+    return clip_hounsfield(array, window_min, window_max)
 
 
 def normalize_to_range(
@@ -80,26 +59,21 @@ def normalize_to_range(
     target_min: float = 0.0,
     target_max: float = 1.0,
 ) -> np.ndarray:
-    """Normalize array to target range.
+    """Normalize array to target range."""
 
-    Args:
-        array: Input array
-        target_min: Target minimum value
-        target_max: Target maximum value
+    if target_min >= target_max:
+        msg = f"target_min must be < target_max, got ({target_min}, {target_max})"
+        raise ValueError(msg)
 
-    Returns:
-        Normalized array
-    """
-    array_min = array.min()
-    array_max = array.max()
-
-    if array_max - array_min == 0:
+    array = np.asarray(array, dtype=np.float32)
+    array_min = float(array.min())
+    value_range = float(array.max()) - array_min
+    if np.isclose(value_range, 0.0):
         return np.full_like(array, target_min)
 
-    normalized = (array - array_min) / (array_max - array_min)
-    normalized = normalized * (target_max - target_min) + target_min
-
-    return normalized
+    scaled = (array - array_min) / value_range
+    scaled = scaled * (target_max - target_min) + target_min
+    return scaled.astype(np.float32, copy=False)
 
 
 def preprocess_ct_scan(
@@ -107,34 +81,47 @@ def preprocess_ct_scan(
     target_spacing: tuple[float, float, float] = (1.0, 1.0, 1.0),
     window_center: int = -600,
     window_width: int = 1500,
-) -> np.ndarray:
+    histogram_method: HistogramMethod = "none",
+    adaptive_clip_limit: float = 0.01,
+    adaptive_kernel_size: tuple[int, ...] | int | None = None,
+    return_stats: bool = False,
+) -> np.ndarray | tuple[np.ndarray, NormalizationStats]:
     """Complete preprocessing pipeline for a single CT scan.
 
     Args:
-        input_path: Path to input file (.mhd or DICOM)
-        target_spacing: Target isotropic spacing
-        window_center: HU window center
-        window_width: HU window width
+        input_path: Path to input volume (SimpleITK-compatible).
+        target_spacing: Target voxel spacing in millimetres.
+        window_center: HU window centre for clipping.
+        window_width: HU window width for clipping.
+        histogram_method: Optional histogram equalisation strategy.
+        adaptive_clip_limit: Clip limit when using adaptive histogram equalisation.
+        adaptive_kernel_size: Kernel size for adaptive histogram equalisation.
+        return_stats: If True, also return a stats dictionary summarising the pass.
 
     Returns:
-        Preprocessed numpy array (normalized to [0, 1])
+        Either the normalised volume or a tuple of (volume, stats) when
+        ``return_stats`` is True.
     """
-    # Load image
+
     image = sitk.ReadImage(str(input_path))
-
-    # Resample to isotropic
     resampled = resample_to_isotropic(image, target_spacing)
-
-    # Convert to numpy array
     array = sitk.GetArrayFromImage(resampled)
 
-    # Apply HU windowing
-    windowed = apply_hu_windowing(array, window_center, window_width)
+    window_min = float(window_center) - float(window_width) / 2.0
+    window_max = float(window_center) + float(window_width) / 2.0
 
-    # Normalize to [0, 1]
-    normalized = normalize_to_range(windowed)
+    kwargs = {
+        "window": (window_min, window_max),
+        "target_range": (0.0, 1.0),
+        "histogram_method": histogram_method,
+        "adaptive_clip_limit": adaptive_clip_limit,
+        "adaptive_kernel_size": adaptive_kernel_size,
+    }
 
-    return normalized
+    if return_stats:
+        return normalize_intensity(array, return_stats=True, **kwargs)
+
+    return normalize_intensity(array, return_stats=False, **kwargs)
 
 
 def main():

@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck shell=bash
 # Run PIVOT training in Docker with multi-GPU backend support
 
-set -e
+set -euo pipefail
 
 # Default values
 CONFIG="configs/train.yaml"
@@ -48,19 +49,30 @@ echo "Config: $CONFIG"
 echo "GPU Backend: $GPU_BACKEND"
 echo ""
 
+if command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD=(docker-compose)
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD=(docker compose)
+else
+    echo "Error: Docker Compose is not installed. Install docker-compose or Docker Compose v2." >&2
+    exit 1
+fi
+
+DOCKER_COMPOSE_STR=${DOCKER_COMPOSE_CMD[*]}
+
 # Build image if it doesn't exist
 if [[ "$(docker images -q pivot-train-$GPU_BACKEND:latest 2> /dev/null)" == "" ]]; then
     echo "Training image not found. Building..."
-    ./scripts/docker_build.sh --train --backend $GPU_BACKEND
+    ./scripts/docker_build.sh --train --backend "$GPU_BACKEND"
 fi
 
 # Run training
 if [[ "$DETACH" == true ]]; then
-    docker-compose -f docker/docker-compose.yml up -d train-$GPU_BACKEND
+    "${DOCKER_COMPOSE_CMD[@]}" -f docker/docker-compose.yml up -d train-$GPU_BACKEND
     echo ""
     echo "Training container started in detached mode"
-    echo "To view logs: docker-compose -f docker/docker-compose.yml logs -f train-$GPU_BACKEND"
+    echo "To view logs: $DOCKER_COMPOSE_STR -f docker/docker-compose.yml logs -f train-$GPU_BACKEND"
     echo "To attach: docker attach pivot-train-$GPU_BACKEND"
 else
-    docker-compose -f docker/docker-compose.yml run --rm train-$GPU_BACKEND python -m train.main --config "$CONFIG"
+    "${DOCKER_COMPOSE_CMD[@]}" -f docker/docker-compose.yml run --rm train-$GPU_BACKEND python -m train.main --config "$CONFIG"
 fi

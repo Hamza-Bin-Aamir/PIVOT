@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck shell=bash
 # Build Docker images for PIVOT with multi-GPU backend support
 
-set -e
+set -euo pipefail
 
 echo "Building PIVOT Docker Images"
 echo "============================"
@@ -59,6 +60,14 @@ fi
 echo "GPU Backend: $GPU_BACKEND"
 echo ""
 
+if command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE_STR="docker-compose"
+elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE_STR="docker compose"
+else
+    DOCKER_COMPOSE_STR="docker compose"
+fi
+
 # Build training image
 if [[ "$BUILD_TRAIN" == true || "$BUILD_ALL" == true ]]; then
     echo "Building training image for $GPU_BACKEND..."
@@ -81,8 +90,8 @@ echo "To view images:"
 echo "  docker images | grep pivot"
 echo ""
 echo "To run with docker-compose:"
-echo "  docker-compose up -d train-$GPU_BACKEND      # Start training container"
-echo "  docker-compose up -d inference-$GPU_BACKEND  # Start inference container"
+echo "  $DOCKER_COMPOSE_STR up -d train-$GPU_BACKEND      # Start training container"
+echo "  $DOCKER_COMPOSE_STR up -d inference-$GPU_BACKEND  # Start inference container"
 echo ""
 echo "GPU Backend Information:"
 case $GPU_BACKEND in

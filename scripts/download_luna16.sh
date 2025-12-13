@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck shell=bash
 # Script to download LUNA16 dataset
 
 echo "LUNA16 Dataset Download Script"

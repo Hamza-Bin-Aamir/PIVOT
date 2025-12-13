@@ -1,5 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# shellcheck shell=bash
 # Script to set up the development environment
+set -euo pipefail
 
 echo "Setting up PIVOT development environment..."
 echo ""

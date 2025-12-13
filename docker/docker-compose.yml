@@ -191,6 +191,52 @@ services:
               capabilities: [gpu]
     command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
 
+  # Development service (AMD ROCm)
+  dev-rocm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train.rocm
+    image: pivot-train-rocm:latest
+    container_name: pivot-dev-rocm
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - .:/workspace
+    ports:
+      - "8888:8888"
+      - "6006:6006"
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+
+  # Development service (Intel GPU)
+  dev-intel:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.train.intel
+    image: pivot-train-intel:latest
+    container_name: pivot-dev-intel
+    devices:
+      - /dev/dri
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    volumes:
+      - .:/workspace
+    ports:
+      - "8888:8888"
+      - "6006:6006"
+    shm_size: '8gb'
+    stdin_open: true
+    tty: true
+    command: ["/bin/bash", "-c", "source /opt/intel/oneapi/setvars.sh && jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root"]
+
 networks:
   default:
     name: pivot-network

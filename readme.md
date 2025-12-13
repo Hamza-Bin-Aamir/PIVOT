@@ -77,6 +77,9 @@ PIVOT supports multiple GPU backends through Docker:
 bash scripts/detect_gpu.sh
 ```
 
+> **Note**: GPU detection inspects Linux device nodes. On Windows, run this
+> command inside Git Bash (with WSL) or on a Linux host.
+
 #### Build Docker Images
 
 ```bash
@@ -128,10 +131,12 @@ bash scripts/docker_inference.sh --backend intel --input <input> --model <model>
 # Start Jupyter Lab (NVIDIA by default)
 bash scripts/docker_dev.sh
 
-# With specific backend
-docker-compose up train-cuda   # NVIDIA
-docker-compose up train-rocm   # AMD
-docker-compose up train-intel  # Intel
+# With specific backend and custom port
+bash scripts/docker_dev.sh 8888 rocm
+bash scripts/docker_dev.sh 9000 intel
+
+# Windows PowerShell users: prefix with bash
+bash scripts/docker_dev.sh 8888 cuda
 ```
 
 Access Jupyter at `http://localhost:8888`
@@ -254,6 +259,8 @@ The primary training and validation are conducted using the **LUNA16 (LUng Nodul
 ## Preprocessing Pipeline
 
 Raw CT data (DICOM or MHD) undergoes a rigorous 3D preprocessing pipeline before entering the network. The pipeline is implemented in `src/data/preprocess.py`.
+
+For an end-to-end roadmap that mirrors the active GitHub issues—from raw data intake through training, inference, and serving—see **[docs/PIPELINE.md](docs/PIPELINE.md)**.
 
 1. **Resampling:** All scans are resampled to an isotropic resolution of `1mm x 1mm x 1mm` to handle varying slice thicknesses across scanners.
 2. **HU Windowing:** Pixel intensities are clipped to the standard lung window:
