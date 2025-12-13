@@ -1,0 +1,102 @@
+# Annotation Parsing Utilities
+
+The `src/data/annotations.py` module centralises the tooling for transforming the
+LUNA16 CSV metadata and the richer LIDC-IDRI XML reports into strongly-typed,
+Python-friendly structures. This page explains the available helpers, their
+expected inputs, and how they fit into the broader data pipeline.
+
+## LUNA16 CSV Metadata
+
+The official LUNA16 release provides a single `annotations.csv` file containing
+per-nodule measurements. Use `parse_luna16_annotations` to read the file into a
+list of immutable `LUNA16Annotation` instances:
+
+```python
+from pathlib import Path
+from src.data.annotations import parse_luna16_annotations
+
+annotations = parse_luna16_annotations(
+    Path("/path/to/annotations.csv"),
+    min_diameter_mm=3.0,              # optional size filter
+    allowed_series_uids={"1.3.6.1"},  # optional whitelist
+)
+```
+
+Each `LUNA16Annotation` contains the CT `series_uid`, the nodule centre
+coordinates in `(x, y, z)` order, and the measured diameter in millimetres.
+Invalid rows (missing IDs or numeric columns) raise `ValueError` with the row
+number to make debugging easier. Files that cannot be located raise
+`FileNotFoundError` before the CSV reader is initialised.
+
+Group annotations by series when preparing dataset splits with
+`group_annotations_by_series`, which returns a dictionary keyed by
+`series_uid`:
+
+```python
+from src.data.annotations import group_annotations_by_series
+
+by_series = group_annotations_by_series(annotations)
+print(by_series["1.3.6.1"])  # -> list[LUNA16Annotation]
+```
+
+## LIDC-IDRI XML Reports
+
+The parent LIDC-IDRI dataset stores richer radiologist feedback in XML
+"read" reports. The `parse_lidc_annotations` helper scans those files and
+returns a list of `LIDCAnnotation` objects, each bundling an unblinded nodule
+with its review session metadata and slice-by-slice ROIs:
+
+```python
+from src.data.annotations import parse_lidc_annotations
+
+annotations = parse_lidc_annotations(
+    "/path/to/LIDC-IDRI-0001/annotations.xml",
+    min_roi_count=2,                 # require two or more traced slices
+    allowed_nodule_ids={"Nodule-3"},  # optional whitelist
+)
+```
+
+An `LIDCAnnotation` includes:
+
+- `series_uid`: the CT Series Instance UID extracted from the XML header.
+- `nodule_id`: the radiologist-provided identifier for the nodule.
+- `reading_session_id`: either the radiologist ID or a generated
+  `session-{index}` fallback when the XML omits it.
+- `rois`: an ordered tuple of `LIDCRoi` items. Each ROI stores the SOP UID (if
+  present), the slice `z_position`, and a tuple of `(x, y)` edge coordinates.
+- `characteristics`: optional radiologist scoring attributes captured as
+  `(name, integer_value)` pairs.
+
+The parser skips ROIs that are explicitly excluded (`<inclusion>false</inclusion>`)
+or that contain no edge coordinates. You can require a minimum number of ROIs
+per returned nodule with `min_roi_count`. Malformed XML generates a descriptive
+`ValueError`, while a missing file raises `FileNotFoundError`.
+
+## Data Quality Guarantees
+
+- **Validation-first**: numeric conversion and structural checks run before the
+  data leaves the parser. Any failure is reported with context so CI or ETL
+  jobs fail fast.
+- **Immutable outputs**: dataclasses are frozen and use `slots` to minimise
+  accidental mutation and keep memory usage predictable when grouping by series
+  or building training targets.
+- **Test coverage**: `tests/test_annotations.py` exercises every branch—happy
+  paths, filtering, and error handling—for both LUNA16 and LIDC-IDRI helpers.
+  The repository locks `src/data/annotations.py` at 100% coverage to guard
+  against regressions.
+
+## Integration Points
+
+1. **Dataset preparation**: use the CSV helper to build look-up tables when
+   converting raw DICOM volumes into `.npy` tensors. The grouped view assists
+   in building per-series patch lists.
+2. **Ground truth generation**: leverage the ROI polygons from the XML parser
+   to rasterise slice masks, compute malignancy priors, or fuse multi-reader
+   annotations.
+3. **Quality assurance**: failed parses surface corrupted annotation files
+   early, helping data ops teams patch upstream inconsistencies before training
+   jobs launch.
+
+Refer back to the [Pipeline overview](PIPELINE.md#2-data-intake--ground-truth)
+for the milestone context and to track follow-up tasks (triage scores, heatmap
+rasterisation, etc.).
