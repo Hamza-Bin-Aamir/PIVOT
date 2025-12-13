@@ -1,5 +1,10 @@
 """Data processing, loading, and augmentation modules."""
 
+from .annotations import (
+    LUNA16Annotation,
+    group_annotations_by_series,
+    parse_luna16_annotations,
+)
 from .augment import (
     AugmentationConfig,
     Compose,
@@ -32,6 +37,10 @@ from .resampling import (
 )
 
 __all__ = [
+    # Annotations
+    "LUNA16Annotation",
+    "group_annotations_by_series",
+    "parse_luna16_annotations",
     # Dataset
     "LUNADataset",
     # Augmentations
