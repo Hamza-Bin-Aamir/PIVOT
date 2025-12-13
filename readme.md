@@ -266,8 +266,19 @@ For an end-to-end roadmap that mirrors the active GitHub issues—from raw data 
 2. **HU Windowing:** Pixel intensities are clipped to the standard lung window:
    - **Level:** -600 HU
    - **Width:** 1500 HU (Range: -1350 to +150)
-3. **Normalization:** Windowed values are linearly scaled to the range `[0, 1]`.
+3. **Intensity Normalization:** `normalize_intensity` clips to the configured HU window, scales values into `[0, 1]`, and can optionally apply global or adaptive histogram equalisation. The function returns descriptive statistics so downstream steps can log or monitor preprocessing drift.
 4. **Patch Generation:** The volume is cropped into 3D patches of size `(96, 96, 96)` for training.
+
+## Data Augmentation
+
+Training-time augmentation is implemented in `src/data/augment.py`. The default pipeline provided by `build_default_augmentation_pipeline` composes:
+
+- Random flips across each spatial axis.
+- 90° rotations with axis reordering so tensors remain in `(C, D, H, W)` format.
+- Optional Gaussian noise injection controlled via probability and standard deviation.
+- Random intensity scaling and shifting to simulate scanner-specific contrast changes.
+
+Configure the probabilities and ranges through `AugmentationConfig`; disable any step by setting its probability to `0.0`. The `LUNADataset` accepts a transform callable, so custom augmentation stacks can be swapped in as needed.
 
 ## Directory Structure
 

@@ -46,6 +46,27 @@ API, Dashboard, Deployment, Ops (#67-#127)
 - **Quality assurance**: Scan completeness, artifact detection (Issue #9).
 - **Annotation parsing**: LUNA16 CSV, LIDC-IDRI XML, triage scoring, heatmaps (Issues #10-#13).
 
+### Intensity Normalisation (Issue #6)
+
+Implemented in `src/data/intensity.py` and wired into the preprocessing pipeline. The helper:
+
+- Clips HU values using a configurable window.
+- Normalises to an arbitrary output range (defaults to `[0, 1]`).
+- Supports three histogram modes: `none`, `global`, and CLAHE-based `adaptive`.
+- Returns `NormalizationStats` (min/max/mean/std) for monitoring.
+
+Tests live in `tests/test_intensity.py`, ensuring HU clipping, scaling, histogram modes, and error paths behave as expected.
+
+### 3D Augmentation (Issue #7)
+
+Lifted into `src/data/augment.py` as a reusable pipeline:
+
+- `RandomFlip3D`, `RandomRotate90`, `RandomGaussianNoise`, and `RandomIntensityScale` provide core transforms.
+- `Compose` lets callers stack arbitrary transforms.
+- `AugmentationConfig` configures probabilities, noise level, and intensity shift/scale ranges, and `build_default_augmentation_pipeline` constructs the standard training stack.
+
+Coverage for each transform sits in `tests/test_augment.py`, targeting tensor shape preservation, deterministic branches, and parameter validation.
+
 ## 3. Model Architecture
 
 - **U-Net encoder/decoder/bottleneck**: Four-level 3D backbone (Issues #14-#16).

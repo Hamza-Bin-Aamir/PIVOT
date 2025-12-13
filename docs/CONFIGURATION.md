@@ -91,13 +91,17 @@ model:
 
 #### Data Configuration
 ```yaml
-data_dir: data/processed
-batch_size: 2
-num_workers: 4
-pin_memory: true
-shuffle_train: true
-cache_rate: 0.0          # MONAI cache (0=none, 1=full)
+data:
+  data_dir: data/processed
+  batch_size: 2
+  num_workers: 4
+  pin_memory: true
+  shuffle_train: true
+  drop_last: true
+  cache_rate: 0.0          # MONAI cache (0=none, 1=full)
 ```
+
+> **Backward compatibility:** `batch_size`, `num_workers`, and `data_dir` are also accepted at `train` level; they are merged into the nested `data` block when loading YAML files.
 
 #### Preprocessing Configuration
 ```yaml
@@ -108,6 +112,8 @@ preprocessing:
   patch_size: [96, 96, 96]          # 3D patch size
   normalize: true                   # Normalize intensities
 ```
+
+Additional intensity options—window clipping, histogram mode, and adaptive CLAHE parameters—are provided at runtime through `preprocess_ct_scan` (`src/data/preprocess.py`) and internally use `normalize_intensity` from `src/data/intensity.py`.
 
 #### Augmentation Configuration
 ```yaml
@@ -121,6 +127,8 @@ augmentation:
   elastic_deform_prob: 0.0
   gaussian_noise_prob: 0.0
 ```
+
+The on-disk configuration toggles individual probabilistic hooks used by the runtime augmentation pipeline in `src/data/augment.py`. Use `AugmentationConfig` at runtime to map these probabilities onto concrete transforms (flips, 90° rotations, Gaussian noise, intensity scaling).
 
 #### Optimizer Configuration
 ```yaml
