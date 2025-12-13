@@ -255,6 +255,8 @@ The primary training and validation are conducted using the **LUNA16 (LUng Nodul
 
 Raw CT data (DICOM or MHD) undergoes a rigorous 3D preprocessing pipeline before entering the network. The pipeline is implemented in `src/data/preprocess.py`.
 
+For an end-to-end roadmap that mirrors the active GitHub issues—from raw data intake through training, inference, and serving—see **[docs/PIPELINE.md](docs/PIPELINE.md)**.
+
 1. **Resampling:** All scans are resampled to an isotropic resolution of `1mm x 1mm x 1mm` to handle varying slice thicknesses across scanners.
 2. **HU Windowing:** Pixel intensities are clipped to the standard lung window:
    - **Level:** -600 HU
