@@ -15,6 +15,7 @@ from .augment import (
     build_default_augmentation_pipeline,
 )
 from .dataset import LUNADataset
+from .heatmap import HeatmapConfig, generate_center_heatmap
 from .intensity import (
     HistogramMethod,
     NormalizationStats,
@@ -51,6 +52,8 @@ __all__ = [
     "compute_triage_score",
     # Dataset
     "LUNADataset",
+    "HeatmapConfig",
+    "generate_center_heatmap",
     # Augmentations
     "AugmentationConfig",
     "Compose",
