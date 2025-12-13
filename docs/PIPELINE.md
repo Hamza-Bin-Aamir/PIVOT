@@ -40,7 +40,7 @@ API, Dashboard, Deployment, Ops (#67-#127)
 
 - **DICOM ingestion**: pydicom loader with full metadata extraction (Issue #4).
 - **Isotropic resampling**: Trilinear interpolation to 1mm spacing (Issue #5).
-- **Intensity normalization**: HU clipping to [-1000, 400] with unit tests (Issue #6).
+- **Intensity normalization**: HU clipping to [-1000, 400], scaling to [0, 1], optional histogram equalisation (Issue #6).
 - **Augmentation**: 3D transforms for rotations, scaling, noise (Issue #7).
 - **Dataset wrapper**: Balanced sampling, caching, multiprocessing (Issue #8).
 - **Quality assurance**: Scan completeness, artifact detection (Issue #9).

@@ -1,17 +1,19 @@
 """Data processing, loading, and augmentation modules."""
 
 from .dataset import LUNADataset
+from .intensity import (
+    HistogramMethod,
+    NormalizationStats,
+    clip_hounsfield,
+    normalize_intensity,
+)
 from .loader import (
     DICOMLoader,
     MedicalScanLoader,
     NIfTILoader,
     ScanMetadata,
 )
-from .preprocess import (
-    apply_hu_windowing,
-    normalize_to_range,
-    preprocess_ct_scan,
-)
+from .preprocess import apply_hu_windowing, normalize_to_range, preprocess_ct_scan
 from .resampling import (
     calculate_isotropic_shape,
     calculate_resampling_factor,
@@ -29,6 +31,10 @@ __all__ = [
     "NIfTILoader",
     "ScanMetadata",
     # Preprocessing
+    "HistogramMethod",
+    "NormalizationStats",
+    "clip_hounsfield",
+    "normalize_intensity",
     "apply_hu_windowing",
     "normalize_to_range",
     "preprocess_ct_scan",
