@@ -1,5 +1,14 @@
 """Data processing, loading, and augmentation modules."""
 
+from .augment import (
+    AugmentationConfig,
+    Compose,
+    RandomFlip3D,
+    RandomGaussianNoise,
+    RandomIntensityScale,
+    RandomRotate90,
+    build_default_augmentation_pipeline,
+)
 from .dataset import LUNADataset
 from .intensity import (
     HistogramMethod,
@@ -25,6 +34,14 @@ from .resampling import (
 __all__ = [
     # Dataset
     "LUNADataset",
+    # Augmentations
+    "AugmentationConfig",
+    "Compose",
+    "RandomFlip3D",
+    "RandomGaussianNoise",
+    "RandomIntensityScale",
+    "RandomRotate90",
+    "build_default_augmentation_pipeline",
     # Loaders
     "DICOMLoader",
     "MedicalScanLoader",
