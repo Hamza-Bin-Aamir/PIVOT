@@ -85,6 +85,25 @@ per returned nodule with `min_roi_count`. Malformed XML generates a descriptive
   The repository locks `src/data/annotations.py` at 100% coverage to guard
   against regressions.
 
+## Triage Score Ground Truth
+
+`src/data/triage.py` derives a 1-10 triage score from the radiologist
+characteristics captured in LIDC-IDRI XML files. The helper follows the scoring
+heuristics tracked in Issue #12:
+
+- **Base mapping**: linearly map the averaged malignancy vote (1-5) onto the
+  triage scale (1-10).
+- **Size adjustment**: shrink sub-4mm nodules by one point and increment nodules
+  above 8/12/20mm by +1/+2/+3 respectively.
+- **Morphology bonuses**: add +2 when mean spiculation ≥ 3.5 and +1 when texture
+  or internal structure indicate a ground-glass appearance (≤ 2.5).
+- **Growth bonus**: add +3 if temporal growth scores ≥ 4 or free-text labels flag
+  the nodule as growing/progressive.
+
+All contributions are summed then clipped to stay within 1-10, and the function
+returns a `TriageScoreBreakdown` so downstream code can preserve explainability.
+See `tests/test_triage.py` for concrete examples.
+
 ## Integration Points
 
 1. **Dataset preparation**: use the CSV helper to build look-up tables when

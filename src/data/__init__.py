@@ -35,12 +35,20 @@ from .resampling import (
     resample_mask,
     resample_to_isotropic,
 )
+from .triage import (
+    TriageScoreBreakdown,
+    aggregate_lidc_characteristics,
+    compute_triage_score,
+)
 
 __all__ = [
     # Annotations
     "LUNA16Annotation",
     "group_annotations_by_series",
     "parse_luna16_annotations",
+    "TriageScoreBreakdown",
+    "aggregate_lidc_characteristics",
+    "compute_triage_score",
     # Dataset
     "LUNADataset",
     # Augmentations
