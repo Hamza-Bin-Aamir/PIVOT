@@ -20,6 +20,12 @@ def get_default_train_config() -> dict[str, Any]:
             "data_dir": "data/processed",
             "batch_size": 2,
             "num_workers": 4,
+            "data": {
+                "pin_memory": True,
+                "shuffle_train": True,
+                "drop_last": True,
+                "cache_rate": 0.0,
+            },
             "model": {
                 "type": "unet3d",
                 "in_channels": 1,
@@ -132,6 +138,7 @@ def get_fast_dev_config() -> dict[str, Any]:
     config["train"]["log_every"] = 1
     config["train"]["validation"]["val_every"] = 1
     config["train"]["augmentation"]["enabled"] = False
+    config["train"].setdefault("data", {})
     config["train"]["data"]["cache_rate"] = 0.0
     return config
 
@@ -149,6 +156,7 @@ def get_high_performance_config() -> dict[str, Any]:
     config["train"]["epochs"] = 300
     config["train"]["gradient_accumulation_steps"] = 2
     config["train"]["early_stopping_patience"] = 30
+    config["train"].setdefault("data", {})
     config["train"]["data"]["cache_rate"] = 1.0  # Full caching
     config["train"]["data"]["pin_memory"] = True
     config["train"]["hardware"]["mixed_precision"] = True

@@ -280,6 +280,18 @@ class ConfigLoader:
     """Utility class for loading and merging configurations."""
 
     @staticmethod
+    def _to_serializable(value: Any) -> Any:
+        """Convert configuration data to YAML-safe types."""
+
+        if isinstance(value, dict):
+            return {key: ConfigLoader._to_serializable(val) for key, val in value.items()}
+        if isinstance(value, tuple):
+            return [ConfigLoader._to_serializable(item) for item in value]
+        if isinstance(value, list):
+            return [ConfigLoader._to_serializable(item) for item in value]
+        return value
+
+    @staticmethod
     def load_yaml(config_path: str | Path) -> dict[str, Any]:
         """Load configuration from YAML file.
 
@@ -309,8 +321,10 @@ class ConfigLoader:
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
+        serializable_config = ConfigLoader._to_serializable(config)
+
         with open(save_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(serializable_config, f, default_flow_style=False, sort_keys=False)
 
     @staticmethod
     def merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
