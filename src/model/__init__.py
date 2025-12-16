@@ -2,6 +2,7 @@
 
 from .unet import (
     BottleneckBlock,
+    CenterDetectionHead,
     DecoderBlock,
     DoubleConv3D,
     EncoderBlock,
@@ -11,6 +12,7 @@ from .unet import (
 
 __all__ = [
     "BottleneckBlock",
+    "CenterDetectionHead",
     "DecoderBlock",
     "DoubleConv3D",
     "EncoderBlock",

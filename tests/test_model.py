@@ -7,6 +7,7 @@ import torch
 
 from src.model.unet import (
     BottleneckBlock,
+    CenterDetectionHead,
     DecoderBlock,
     DoubleConv3D,
     EncoderBlock,
@@ -937,3 +938,252 @@ class TestSegmentationHead:
 
         assert loss.item() >= 0
         assert not torch.isnan(loss)
+
+
+class TestCenterDetectionHead:
+    """Tests for CenterDetectionHead."""
+
+    def test_center_detection_head_initialization(self):
+        """Test CenterDetectionHead initializes correctly."""
+        head = CenterDetectionHead(in_channels=32)
+
+        assert head.in_channels == 32
+        assert not head.apply_sigmoid
+        assert head.conv.in_channels == 32
+        assert head.conv.out_channels == 1
+        assert head.conv.kernel_size == (1, 1, 1)
+
+    def test_center_detection_head_with_sigmoid(self):
+        """Test CenterDetectionHead with sigmoid activation."""
+        head = CenterDetectionHead(in_channels=64, apply_sigmoid=True)
+
+        assert head.apply_sigmoid
+
+    def test_center_detection_head_forward_shape(self):
+        """Test center detection head output shape."""
+        head = CenterDetectionHead(in_channels=32)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Output should have single channel (heatmap)
+        assert output.shape == (2, 1, 16, 16, 16)
+
+    def test_center_detection_head_preserves_spatial_dims(self):
+        """Test center detection head preserves spatial dimensions."""
+        head = CenterDetectionHead(in_channels=64)
+
+        test_sizes = [(16, 16, 16), (32, 32, 32), (64, 64, 64), (8, 12, 16)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            assert output.shape[2:] == size
+
+    def test_center_detection_head_logits_output(self):
+        """Test center detection head produces logits without sigmoid."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Logits can be any real value
+        assert output.shape == (2, 1, 16, 16, 16)
+        # Should have values outside [0, 1] range (logits)
+        assert (output < 0).any() or (output > 1).any()
+
+    def test_center_detection_head_sigmoid_output(self):
+        """Test center detection head produces probabilities with sigmoid."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Probabilities should be in [0, 1]
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_center_detection_head_batch_sizes(self):
+        """Test center detection head handles different batch sizes."""
+        head = CenterDetectionHead(in_channels=64)
+
+        for batch_size in [1, 2, 4, 8]:
+            x = torch.randn(batch_size, 64, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (batch_size, 1, 16, 16, 16)
+
+    def test_center_detection_head_different_channels(self):
+        """Test center detection head with different input channels."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for in_ch in test_channels:
+            head = CenterDetectionHead(in_channels=in_ch)
+            x = torch.randn(1, in_ch, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (1, 1, 16, 16, 16)
+
+    def test_center_detection_head_gradients(self):
+        """Test gradients flow through center detection head."""
+        head = CenterDetectionHead(in_channels=32)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_center_detection_head_gradients_with_sigmoid(self):
+        """Test gradients flow through center detection head with sigmoid."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_center_detection_head_eval_mode(self):
+        """Test center detection head in evaluation mode."""
+        head = CenterDetectionHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert not output.requires_grad
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_center_detection_head_wrong_dimensions(self):
+        """Test center detection head raises error for wrong input dimensions."""
+        head = CenterDetectionHead(in_channels=32)
+
+        # 4D input (missing dimension)
+        x_4d = torch.randn(2, 32, 16, 16)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 6D input (extra dimension)
+        x_6d = torch.randn(2, 32, 16, 16, 16, 1)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_6d)
+
+    def test_center_detection_head_reproducibility(self):
+        """Test center detection head produces consistent outputs."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(1, 32, 16, 16, 16)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        assert torch.allclose(output1, output2)
+
+    def test_center_detection_head_no_nan_output(self):
+        """Test center detection head doesn't produce NaN outputs."""
+        head = CenterDetectionHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_center_detection_head_works_with_unet_output(self):
+        """Test center detection head works with U-Net backbone output."""
+        # Create a small U-Net
+        unet = UNet3D(in_channels=1, out_channels=32, init_features=16, depth=2)
+        head = CenterDetectionHead(in_channels=32)
+
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        # Pass through U-Net
+        features = unet(x)
+        assert features.shape == (1, 32, 32, 32, 32)
+
+        # Pass through center detection head
+        heatmap = head(features)
+        assert heatmap.shape == (1, 1, 32, 32, 32)
+
+    def test_center_detection_head_single_channel_output(self):
+        """Test center detection head produces single channel heatmap."""
+        head = CenterDetectionHead(in_channels=128)
+
+        x = torch.randn(4, 128, 8, 8, 8)
+        output = head(x)
+
+        # Heatmap: single channel
+        assert output.shape[1] == 1
+
+    def test_center_detection_head_heatmap_range(self):
+        """Test center detection head heatmap values are in valid range."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        heatmap = head(x)
+
+        # With sigmoid, should be probabilities [0, 1]
+        assert heatmap.min() >= 0
+        assert heatmap.max() <= 1
+
+    def test_center_detection_head_peak_detection_ready(self):
+        """Test center detection head output suitable for peak detection."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(1, 32, 32, 32, 32)
+
+        with torch.no_grad():
+            heatmap = head(x)
+
+        # Heatmap should be smooth (no abrupt changes for peak detection)
+        assert heatmap.shape == (1, 1, 32, 32, 32)
+        # Values should be differentiable
+        assert not torch.isnan(heatmap).any()
+        # Should have valid probability range
+        assert (heatmap >= 0).all() and (heatmap <= 1).all()
+
+    def test_center_detection_head_integration_with_focal_loss(self):
+        """Test center detection head output compatible with focal loss."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        # Simulated heatmap target with sparse peaks
+        target = torch.zeros(2, 1, 16, 16, 16)
+        target[:, :, 8, 8, 8] = 1.0  # Center peak
+        target[:, :, 12, 10, 14] = 0.8  # Another peak
+
+        output = head(x)
+
+        # Should work with BCE with logits loss (proxy for focal)
+        loss_fn = torch.nn.BCEWithLogitsLoss()
+        loss = loss_fn(output, target)
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_center_detection_head_multi_scale_compatibility(self):
+        """Test center detection head works with various feature map sizes."""
+        head = CenterDetectionHead(in_channels=64)
+
+        # Different feature map sizes (from different network depths)
+        test_sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            # Should preserve spatial dimensions for dense prediction
+            assert output.shape[2:] == size

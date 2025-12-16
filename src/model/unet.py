@@ -368,3 +368,69 @@ class SegmentationHead(nn.Module):
             x = torch.sigmoid(x)
 
         return x
+
+
+class CenterDetectionHead(nn.Module):
+    """Center point detection head for nodule localization via heatmap.
+
+    Produces a probability heatmap indicating nodule center locations.
+    Uses a 1x1x1 convolution to map backbone features to a single output
+    channel representing a center point heatmap with Gaussian peaks at
+    nodule centers.
+
+    Architecture: Conv3d(1x1x1) -> Sigmoid (optional, for inference)
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        apply_sigmoid: bool = False,
+    ):
+        """Initialize center detection head.
+
+        Args:
+            in_channels: Number of input channels from backbone
+            apply_sigmoid: Whether to apply sigmoid activation.
+                          Set False during training (focal loss handles it),
+                          True during inference for probability heatmap.
+        """
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.apply_sigmoid = apply_sigmoid
+
+        # 1x1x1 convolution for center heatmap logits
+        self.conv = nn.Conv3d(
+            in_channels,
+            1,  # Single channel heatmap
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through center detection head.
+
+        Args:
+            x: Input features from backbone [B, in_channels, D, H, W]
+
+        Returns:
+            Center heatmap output [B, 1, D, H, W]
+            - Logits if apply_sigmoid=False (for training with focal loss)
+            - Probabilities if apply_sigmoid=True (for inference/peak detection)
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate center heatmap logits
+        x = self.conv(x)
+
+        # Optionally apply sigmoid for inference
+        if self.apply_sigmoid:
+            x = torch.sigmoid(x)
+
+        return x
