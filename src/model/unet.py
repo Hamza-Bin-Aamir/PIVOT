@@ -104,6 +104,72 @@ class EncoderBlock(nn.Module):
         return skip, pooled
 
 
+class DecoderBlock(nn.Module):
+    """Decoder block with transposed convolution and skip connection fusion.
+
+    Consists of:
+    - ConvTranspose3d for upsampling
+    - Concatenation with skip connection from encoder
+    - DoubleConv3D for feature refinement
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        upsample_size: int = 2,
+    ):
+        """Initialize decoder block.
+
+        Args:
+            in_channels: Number of input channels from previous decoder/bottleneck
+            out_channels: Number of output channels
+            upsample_size: Upsampling factor (kernel size and stride)
+        """
+        super().__init__()
+
+        # Transposed convolution for upsampling
+        self.upsample = nn.ConvTranspose3d(
+            in_channels,
+            in_channels // 2,
+            kernel_size=upsample_size,
+            stride=upsample_size,
+        )
+
+        # Double conv after concatenation with skip connection
+        # Input channels: in_channels//2 (upsampled) + in_channels//2 (skip) = in_channels
+        self.conv = DoubleConv3D(in_channels, out_channels)
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        """Forward pass through decoder block.
+
+        Args:
+            x: Input tensor from previous decoder/bottleneck [B, C_in, D, H, W]
+            skip: Skip connection from encoder [B, C_in//2, D*2, H*2, W*2]
+
+        Returns:
+            Output tensor [B, C_out, D*2, H*2, W*2]
+        """
+        # Upsample
+        x = self.upsample(x)
+
+        # Handle potential size mismatch due to pooling/upsampling
+        # This can happen with odd-sized inputs
+        if x.shape != skip.shape:
+            # Resize x to match skip connection
+            x = nn.functional.interpolate(
+                x, size=skip.shape[2:], mode="trilinear", align_corners=False
+            )
+
+        # Concatenate with skip connection
+        x = torch.cat([skip, x], dim=1)
+
+        # Refine features
+        x = self.conv(x)
+
+        return x
+
+
 class UNet3D(nn.Module):
     """3D U-Net for volumetric medical image segmentation.
 
@@ -156,11 +222,17 @@ class UNet3D(nn.Module):
         # Bottleneck (deepest layer, no pooling)
         self.bottleneck = DoubleConv3D(features // 2, features)
 
-        # TODO: Implement decoder blocks
+        # Build decoder blocks
+        self.decoders = nn.ModuleList()
 
-        # Temporary output layer for testing encoder
-        # Will be replaced with proper decoder
-        self._temp_output_conv = nn.Conv3d(features, out_channels, kernel_size=1)
+        # Decoder mirrors encoder in reverse
+        for _ in range(depth):
+            self.decoders.append(DecoderBlock(features, features // 2))
+            features //= 2
+
+        # Final output convolution (1x1x1 conv to produce desired channels)
+        # After all decoders, features == init_features
+        self.output_conv = nn.Conv3d(init_features, out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through U-Net.
@@ -175,11 +247,8 @@ class UNet3D(nn.Module):
             ValueError: If input has wrong number of dimensions
         """
         if x.dim() != 5:
-            msg = f"Expected 5D input [B, C, D, H, W], got {x.dim()}D tensor"
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
             raise ValueError(msg)
-
-        # Store original spatial size
-        original_size = x.shape[2:]
 
         # Encoder path with skip connections
         skip_connections = []
@@ -190,15 +259,11 @@ class UNet3D(nn.Module):
         # Bottleneck
         x = self.bottleneck(x)
 
-        # TODO: Decoder path (will use skip_connections in reverse)
-        # For now, return bottleneck output upsampled to original size
-        # This maintains spatial size while we implement the encoder
+        # Decoder path with skip connections (reverse order)
+        for decoder, skip in zip(self.decoders, reversed(skip_connections), strict=True):
+            x = decoder(x, skip)
 
-        # Temporary: upsample back to original size for testing
-        # This will be replaced by proper decoder implementation
-        x = nn.functional.interpolate(x, size=original_size, mode="trilinear", align_corners=False)
-
-        # Temporary: reduce channels to match output
-        x = self._temp_output_conv(x)
+        # Final output convolution
+        x = self.output_conv(x)
 
         return x

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.model.unet import DoubleConv3D, EncoderBlock, UNet3D
+from src.model.unet import DecoderBlock, DoubleConv3D, EncoderBlock, UNet3D
 
 
 class TestDoubleConv3D:
@@ -133,6 +133,87 @@ class TestEncoderBlock:
         assert skip.shape[2:] == x.shape[2:]
         # Pooled should be downsampled
         assert pooled.shape[2:] != x.shape[2:]
+
+
+class TestDecoderBlock:
+    """Tests for DecoderBlock."""
+
+    def test_decoder_block_upsamples_input(self):
+        """Test DecoderBlock upsamples input tensor."""
+        decoder = DecoderBlock(in_channels=128, out_channels=64)
+        x = torch.randn(2, 128, 8, 8, 8)
+        skip = torch.randn(2, 64, 16, 16, 16)
+
+        output = decoder(x, skip)
+
+        # Should upsample to skip's spatial size
+        assert output.shape[2:] == skip.shape[2:]
+
+    def test_decoder_block_output_channels(self):
+        """Test DecoderBlock produces correct output channels."""
+        decoder = DecoderBlock(in_channels=256, out_channels=128)
+        x = torch.randn(1, 256, 4, 4, 4)
+        skip = torch.randn(1, 128, 8, 8, 8)
+
+        output = decoder(x, skip)
+
+        assert output.shape[1] == 128
+
+    def test_decoder_block_concatenates_skip(self):
+        """Test DecoderBlock concatenates with skip connection."""
+        decoder = DecoderBlock(in_channels=64, out_channels=32)
+        x = torch.randn(1, 64, 8, 8, 8)
+        skip = torch.randn(1, 32, 16, 16, 16)
+
+        # Manually trace through to verify concatenation
+        upsampled = decoder.upsample(x)
+        assert upsampled.shape == (1, 32, 16, 16, 16)  # Half channels, 2x spatial
+
+        # After concat with skip: 32 + 32 = 64 channels
+        output = decoder(x, skip)
+        assert output.shape == (1, 32, 16, 16, 16)
+
+    def test_decoder_block_handles_size_mismatch(self):
+        """Test DecoderBlock handles odd-sized inputs with interpolation."""
+        decoder = DecoderBlock(in_channels=128, out_channels=64)
+        x = torch.randn(1, 128, 7, 7, 7)
+        skip = torch.randn(1, 64, 15, 15, 15)  # Not exactly 2x
+
+        output = decoder(x, skip)
+
+        # Should match skip size
+        assert output.shape == (1, 64, 15, 15, 15)
+
+    def test_decoder_block_different_upsample_sizes(self):
+        """Test DecoderBlock with different upsampling factors."""
+        decoder_2 = DecoderBlock(in_channels=64, out_channels=32, upsample_size=2)
+        decoder_4 = DecoderBlock(in_channels=64, out_channels=32, upsample_size=4)
+
+        x = torch.randn(1, 64, 4, 4, 4)
+        skip_2 = torch.randn(1, 32, 8, 8, 8)
+        skip_4 = torch.randn(1, 32, 16, 16, 16)
+
+        output_2 = decoder_2(x, skip_2)
+        output_4 = decoder_4(x, skip_4)
+
+        assert output_2.shape == (1, 32, 8, 8, 8)
+        assert output_4.shape == (1, 32, 16, 16, 16)
+
+    def test_decoder_block_batch_size(self):
+        """Test DecoderBlock handles different batch sizes."""
+        decoder = DecoderBlock(in_channels=128, out_channels=64)
+
+        x_b1 = torch.randn(1, 128, 8, 8, 8)
+        skip_b1 = torch.randn(1, 64, 16, 16, 16)
+
+        x_b4 = torch.randn(4, 128, 8, 8, 8)
+        skip_b4 = torch.randn(4, 64, 16, 16, 16)
+
+        output_b1 = decoder(x_b1, skip_b1)
+        output_b4 = decoder(x_b4, skip_b4)
+
+        assert output_b1.shape[0] == 1
+        assert output_b4.shape[0] == 4
 
 
 class TestUNet3DEncoder:
@@ -324,3 +405,209 @@ class TestUNet3DEncoder:
             output2 = model(x)
 
         assert torch.allclose(output1, output2, rtol=1e-5, atol=1e-7)
+
+
+class TestUNet3DDecoder:
+    """Tests for UNet3D decoder path and complete architecture."""
+
+    def test_unet_decoder_blocks_created(self):
+        """Test UNet creates correct number of decoder blocks."""
+        model = UNet3D(depth=4)
+
+        assert len(model.decoders) == 4
+
+    def test_unet_decoder_channel_progression(self):
+        """Test decoder features halve at each level."""
+        model = UNet3D(init_features=32, depth=3)
+
+        # Decoder channel progression (reverse of encoder)
+        # Bottleneck: 256 -> 128 -> 64 -> 32
+        assert model.decoders[0].conv.double_conv[0].out_channels == 128
+        assert model.decoders[1].conv.double_conv[0].out_channels == 64
+        assert model.decoders[2].conv.double_conv[0].out_channels == 32
+
+    def test_unet_complete_forward_pass(self):
+        """Test complete U-Net forward pass."""
+        model = UNet3D(in_channels=1, out_channels=3, init_features=16, depth=3)
+
+        x = torch.randn(2, 1, 32, 32, 32)
+        output = model(x)
+
+        assert output.shape == (2, 3, 32, 32, 32)
+
+    def test_unet_symmetric_architecture(self):
+        """Test U-Net has symmetric encoder-decoder structure."""
+        model = UNet3D(depth=4)
+
+        assert len(model.encoders) == len(model.decoders)
+
+    def test_unet_output_conv_channels(self):
+        """Test final output conv produces correct channels."""
+        model = UNet3D(in_channels=1, out_channels=5, depth=2)
+
+        x = torch.randn(1, 1, 16, 16, 16)
+        output = model(x)
+
+        assert output.shape[1] == 5
+
+    def test_unet_various_output_channels(self):
+        """Test U-Net with different output channel counts."""
+        test_cases = [1, 2, 3, 5, 10]
+
+        for out_ch in test_cases:
+            model = UNet3D(in_channels=1, out_channels=out_ch, depth=2)
+            x = torch.randn(1, 1, 16, 16, 16)
+            output = model(x)
+
+            assert output.shape[1] == out_ch
+
+    def test_unet_decoder_upsampling_progression(self):
+        """Test decoder progressively upsamples features."""
+        model = UNet3D(init_features=16, depth=3)
+        model.eval()
+
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        # Trace through network manually
+        skip_connections = []
+        for encoder in model.encoders:
+            skip, x = encoder(x)
+            skip_connections.append(skip)
+
+        # After encoders: 32 -> 16 -> 8 -> 4
+        assert x.shape[2:] == (4, 4, 4)
+
+        x = model.bottleneck(x)
+
+        # Decoder should upsample back
+        for decoder, skip in zip(model.decoders, reversed(skip_connections), strict=True):
+            x = decoder(x, skip)
+
+        # Should be back to original size
+        assert x.shape[2:] == (32, 32, 32)
+
+    def test_unet_skip_connections_used(self):
+        """Test skip connections are properly utilized."""
+        model = UNet3D(init_features=16, depth=2)
+
+        x = torch.randn(1, 1, 16, 16, 16)
+
+        # Verify forward pass works (implicitly uses skip connections)
+        output = model(x)
+
+        # Output should be same spatial size as input
+        assert output.shape[2:] == x.shape[2:]
+
+    def test_unet_different_depths_complete(self):
+        """Test complete U-Net with different depths."""
+        for depth in [2, 3, 4]:
+            model = UNet3D(depth=depth, init_features=16)
+            x = torch.randn(1, 1, 32, 32, 32)
+
+            output = model(x)
+
+            assert output.shape[2:] == (32, 32, 32)
+
+    def test_unet_large_input(self):
+        """Test U-Net handles larger inputs."""
+        model = UNet3D(init_features=16, depth=3)
+
+        x = torch.randn(1, 1, 64, 64, 64)
+        output = model(x)
+
+        assert output.shape == (1, 1, 64, 64, 64)
+
+    def test_unet_small_input(self):
+        """Test U-Net handles smaller inputs."""
+        model = UNet3D(init_features=16, depth=2)
+
+        x = torch.randn(1, 1, 16, 16, 16)
+        output = model(x)
+
+        assert output.shape == (1, 1, 16, 16, 16)
+
+    def test_unet_gradients_flow_through_decoder(self):
+        """Test gradients flow through complete network."""
+        model = UNet3D(depth=2, init_features=16)
+        x = torch.randn(1, 1, 16, 16, 16, requires_grad=True)
+
+        output = model(x)
+        loss = output.sum()
+        loss.backward()
+
+        # Check gradients exist throughout network
+        assert x.grad is not None
+        assert not torch.all(x.grad == 0)
+
+        # Check decoder gradients
+        for decoder in model.decoders:
+            for param in decoder.parameters():
+                if param.requires_grad:
+                    assert param.grad is not None
+
+    def test_unet_eval_mode_complete(self):
+        """Test complete U-Net in evaluation mode."""
+        model = UNet3D(depth=2)
+        model.eval()
+
+        x = torch.randn(2, 1, 16, 16, 16)
+
+        with torch.no_grad():
+            output = model(x)
+
+        assert output.shape == (2, 1, 16, 16, 16)
+
+    def test_unet_reproducibility_complete(self):
+        """Test complete network produces consistent results."""
+        model = UNet3D(depth=2, init_features=16)
+        model.eval()
+
+        x = torch.randn(1, 1, 16, 16, 16)
+
+        with torch.no_grad():
+            output1 = model(x)
+            output2 = model(x)
+
+        assert torch.allclose(output1, output2, rtol=1e-5, atol=1e-7)
+
+    def test_unet_odd_sized_input(self):
+        """Test U-Net handles odd-sized inputs with interpolation."""
+        model = UNet3D(depth=2, init_features=16)
+
+        # Odd sizes that don't divide evenly
+        x = torch.randn(1, 1, 17, 17, 17)
+        output = model(x)
+
+        # Should still output same spatial size
+        assert output.shape[2:] == (17, 17, 17)
+
+    def test_unet_multi_channel_input_complete(self):
+        """Test complete U-Net with multi-channel input."""
+        model = UNet3D(in_channels=4, out_channels=3, depth=2, init_features=16)
+
+        x = torch.randn(2, 4, 16, 16, 16)
+        output = model(x)
+
+        assert output.shape == (2, 3, 16, 16, 16)
+
+    def test_unet_parameter_count_reasonable(self):
+        """Test U-Net parameter count is reasonable."""
+        model = UNet3D(init_features=32, depth=3)
+
+        total_params = sum(p.numel() for p in model.parameters())
+
+        # Should have millions of parameters but not too excessive
+        assert 1_000_000 < total_params < 50_000_000
+
+    def test_unet_no_nan_output(self):
+        """Test U-Net doesn't produce NaN outputs."""
+        model = UNet3D(depth=2, init_features=16)
+        model.eval()
+
+        x = torch.randn(1, 1, 16, 16, 16)
+
+        with torch.no_grad():
+            output = model(x)
+
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
