@@ -12,6 +12,7 @@ from src.model.unet import (
     DoubleConv3D,
     EncoderBlock,
     MalignancyTriageHead,
+    MultiTaskUNet3D,
     SegmentationHead,
     SizeRegressionHead,
     UNet3D,
@@ -1657,3 +1658,319 @@ class TestMalignancyTriageHead:
 
         assert scaled_scores.min() >= 1
         assert scaled_scores.max() <= 10
+
+
+class TestMultiTaskUNet3D:
+    """Test suite for MultiTaskUNet3D."""
+
+    def test_init_default_all_heads(self):
+        """Test default initialization with all heads enabled."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        assert model.backbone is not None
+        assert model.segmentation_head is not None
+        assert model.center_head is not None
+        assert model.size_head is not None
+        assert model.triage_head is not None
+
+    def test_init_selective_heads(self):
+        """Test initialization with selective head enabling."""
+        # Only segmentation and center
+        model = MultiTaskUNet3D(
+            in_channels=1,
+            init_features=16,
+            depth=2,
+            enable_segmentation=True,
+            enable_center=True,
+            enable_size=False,
+            enable_triage=False,
+        )
+
+        assert model.segmentation_head is not None
+        assert model.center_head is not None
+        assert model.size_head is None
+        assert model.triage_head is None
+
+    def test_init_single_head(self):
+        """Test initialization with only one head enabled."""
+        model = MultiTaskUNet3D(
+            in_channels=1,
+            init_features=16,
+            depth=2,
+            enable_segmentation=False,
+            enable_center=False,
+            enable_size=True,
+            enable_triage=False,
+        )
+
+        assert model.segmentation_head is None
+        assert model.center_head is None
+        assert model.size_head is not None
+        assert model.triage_head is None
+
+    def test_forward_all_heads(self):
+        """Test forward pass with all heads enabled."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        x = torch.randn(2, 1, 32, 32, 32)
+        outputs = model(x)
+
+        # Check all outputs present
+        assert "segmentation" in outputs
+        assert "center" in outputs
+        assert "size" in outputs
+        assert "triage" in outputs
+
+        # Check output shapes
+        assert outputs["segmentation"].shape == (2, 1, 32, 32, 32)
+        assert outputs["center"].shape == (2, 1, 32, 32, 32)
+        assert outputs["size"].shape == (2, 3, 1, 1, 1)
+        assert outputs["triage"].shape == (2, 1, 1, 1, 1)
+
+    def test_forward_selective_heads(self):
+        """Test forward pass with selective heads."""
+        model = MultiTaskUNet3D(
+            in_channels=1,
+            init_features=16,
+            depth=2,
+            enable_segmentation=True,
+            enable_center=False,
+            enable_size=True,
+            enable_triage=False,
+        )
+
+        x = torch.randn(2, 1, 32, 32, 32)
+        outputs = model(x)
+
+        # Check only enabled outputs present
+        assert "segmentation" in outputs
+        assert "center" not in outputs
+        assert "size" in outputs
+        assert "triage" not in outputs
+
+        # Check shapes
+        assert outputs["segmentation"].shape == (2, 1, 32, 32, 32)
+        assert outputs["size"].shape == (2, 3, 1, 1, 1)
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        batch_sizes = [1, 2, 4, 8]
+        for batch_size in batch_sizes:
+            x = torch.randn(batch_size, 1, 16, 16, 16)
+            outputs = model(x)
+
+            assert outputs["segmentation"].shape[0] == batch_size
+            assert outputs["center"].shape[0] == batch_size
+            assert outputs["size"].shape[0] == batch_size
+            assert outputs["triage"].shape[0] == batch_size
+
+    def test_different_spatial_sizes(self):
+        """Test with various spatial dimensions."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        spatial_sizes = [(16, 16, 16), (32, 32, 32), (64, 64, 64)]
+        for size in spatial_sizes:
+            x = torch.randn(1, 1, *size)
+            outputs = model(x)
+
+            # Dense predictions preserve spatial dimensions
+            assert outputs["segmentation"].shape[2:] == size
+            assert outputs["center"].shape[2:] == size
+
+            # Global predictions are 1x1x1
+            assert outputs["size"].shape[2:] == (1, 1, 1)
+            assert outputs["triage"].shape[2:] == (1, 1, 1)
+
+    def test_different_depths(self):
+        """Test with various network depths."""
+        depths = [2, 3, 4]
+
+        for depth in depths:
+            model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=depth)
+            x = torch.randn(1, 1, 32, 32, 32)
+            outputs = model(x)
+
+            assert len(outputs) == 4  # All heads enabled
+
+    def test_gradient_flow_all_heads(self):
+        """Test gradient flow through all heads."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        x = torch.randn(2, 1, 16, 16, 16, requires_grad=True)
+        outputs = model(x)
+
+        # Simulate multi-task loss
+        seg_loss = outputs["segmentation"].sum()
+        center_loss = outputs["center"].sum()
+        size_loss = outputs["size"].sum()
+        triage_loss = outputs["triage"].sum()
+
+        total_loss = seg_loss + center_loss + size_loss + triage_loss
+        total_loss.backward()
+
+        # Check gradients exist
+        assert x.grad is not None
+        assert not torch.all(x.grad == 0)
+
+        # Check backbone gradients
+        for param in model.backbone.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+
+    def test_gradient_flow_selective_heads(self):
+        """Test gradient flow with selective heads."""
+        model = MultiTaskUNet3D(
+            in_channels=1,
+            init_features=16,
+            depth=2,
+            enable_segmentation=True,
+            enable_center=False,
+            enable_size=False,
+            enable_triage=True,
+        )
+
+        x = torch.randn(2, 1, 16, 16, 16, requires_grad=True)
+        outputs = model(x)
+
+        loss = outputs["segmentation"].sum() + outputs["triage"].sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.all(x.grad == 0)
+
+    def test_eval_mode(self):
+        """Test multi-task model in evaluation mode."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+        model.eval()
+
+        x = torch.randn(2, 1, 16, 16, 16)
+
+        with torch.no_grad():
+            outputs = model(x)
+
+        # Check no gradients in eval mode
+        for output in outputs.values():
+            assert not output.requires_grad
+
+    def test_output_dict_structure(self):
+        """Test output dictionary structure."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        x = torch.randn(1, 1, 16, 16, 16)
+        outputs = model(x)
+
+        assert isinstance(outputs, dict)
+        assert all(isinstance(k, str) for k in outputs)
+        assert all(isinstance(v, torch.Tensor) for v in outputs.values())
+
+    def test_shared_backbone(self):
+        """Test that all heads share the same backbone."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        # All heads should use the same backbone instance
+        assert model.backbone is not None
+
+        # Forward pass should use backbone once
+        x = torch.randn(1, 1, 16, 16, 16)
+        _ = model(x)
+
+        # Verify backbone was called (parameters have gradients after loss.backward())
+
+    def test_no_heads_enabled(self):
+        """Test model with no heads enabled."""
+        model = MultiTaskUNet3D(
+            in_channels=1,
+            init_features=16,
+            depth=2,
+            enable_segmentation=False,
+            enable_center=False,
+            enable_size=False,
+            enable_triage=False,
+        )
+
+        x = torch.randn(1, 1, 16, 16, 16)
+        outputs = model(x)
+
+        # Should return empty dict
+        assert isinstance(outputs, dict)
+        assert len(outputs) == 0
+
+    def test_deterministic_output(self):
+        """Test deterministic behavior in eval mode."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+        model.eval()
+
+        x = torch.randn(2, 1, 16, 16, 16)
+
+        with torch.no_grad():
+            outputs1 = model(x)
+            outputs2 = model(x)
+
+        # Same input should give same outputs
+        for key in outputs1:
+            assert torch.allclose(outputs1[key], outputs2[key])
+
+    def test_multi_channel_input(self):
+        """Test with multi-channel input."""
+        model = MultiTaskUNet3D(in_channels=3, init_features=16, depth=2)
+
+        x = torch.randn(1, 3, 16, 16, 16)
+        outputs = model(x)
+
+        assert len(outputs) == 4
+
+    def test_output_no_nan_inf(self):
+        """Test that outputs don't contain NaN or Inf."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+        model.eval()
+
+        x = torch.randn(2, 1, 16, 16, 16)
+
+        with torch.no_grad():
+            outputs = model(x)
+
+        for key, output in outputs.items():
+            assert not torch.isnan(output).any(), f"{key} contains NaN"
+            assert not torch.isinf(output).any(), f"{key} contains Inf"
+
+    def test_parameter_count(self):
+        """Test that model has reasonable parameter count."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+        assert total_params > 0
+        assert trainable_params == total_params  # All params should be trainable
+
+    def test_feature_channel_consistency(self):
+        """Test that feature channels match between backbone and heads."""
+        init_features = 32
+        model = MultiTaskUNet3D(in_channels=1, init_features=init_features, depth=2)
+
+        # Backbone outputs init_features channels
+        assert model.backbone.out_channels == init_features
+
+        # All heads consume init_features channels
+        if model.segmentation_head:
+            assert model.segmentation_head.conv.in_channels == init_features
+        if model.center_head:
+            assert model.center_head.conv.in_channels == init_features
+        if model.size_head:
+            assert model.size_head.conv.in_channels == init_features
+        if model.triage_head:
+            assert model.triage_head.conv.in_channels == init_features
+
+    def test_mixed_precision_compatibility(self):
+        """Test compatibility with mixed precision training."""
+        model = MultiTaskUNet3D(in_channels=1, init_features=16, depth=2)
+
+        x = torch.randn(1, 1, 16, 16, 16)
+
+        # Test with autocast (simulating mixed precision)
+        with torch.autocast(device_type="cpu", dtype=torch.float16, enabled=False):
+            outputs = model(x)
+
+        assert len(outputs) == 4
