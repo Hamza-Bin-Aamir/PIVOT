@@ -8,6 +8,7 @@ import torch
 from src.loss.bce import BCELoss
 from src.loss.dice import DiceLoss
 from src.loss.focal import FocalLoss
+from src.loss.smooth_l1 import SmoothL1Loss
 
 
 class TestDiceLoss:
@@ -1112,3 +1113,356 @@ class TestFocalLoss:
 
         expected_sum = loss_none.sum()
         assert torch.isclose(loss_sum, expected_sum, rtol=1e-4)
+
+
+class TestSmoothL1Loss:
+    """Test suite for SmoothL1Loss."""
+
+    def test_init_default(self):
+        """Test default initialization."""
+        loss_fn = SmoothL1Loss()
+
+        assert loss_fn.beta == 1.0
+        assert loss_fn.reduction == "mean"
+
+    def test_init_custom_params(self):
+        """Test initialization with custom parameters."""
+        loss_fn = SmoothL1Loss(beta=0.5, reduction="sum")
+
+        assert loss_fn.beta == 0.5
+        assert loss_fn.reduction == "sum"
+
+    def test_init_invalid_reduction(self):
+        """Test initialization with invalid reduction."""
+        with pytest.raises(ValueError, match="Invalid reduction"):
+            SmoothL1Loss(reduction="invalid")
+
+    def test_init_invalid_beta(self):
+        """Test initialization with invalid beta."""
+        with pytest.raises(ValueError, match="beta must be positive"):
+            SmoothL1Loss(beta=0.0)
+
+        with pytest.raises(ValueError, match="beta must be positive"):
+            SmoothL1Loss(beta=-1.0)
+
+    def test_perfect_predictions(self):
+        """Test with perfect predictions (zero error)."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = predictions.clone()
+
+        loss = loss_fn(predictions, targets)
+
+        # Perfect match should give zero loss
+        assert torch.isclose(loss, torch.tensor(0.0), atol=1e-6)
+
+    def test_small_errors_quadratic(self):
+        """Test that small errors (< beta) use quadratic loss."""
+        beta = 1.0
+        loss_fn = SmoothL1Loss(beta=beta, reduction="none")
+
+        # Small errors (< beta)
+        predictions = torch.tensor([[[[0.3]]]])
+        targets = torch.tensor([[[[0.0]]]])
+
+        loss = loss_fn(predictions, targets)
+        expected = 0.5 * (0.3**2) / beta
+
+        assert torch.isclose(loss, torch.tensor(expected), rtol=1e-5)
+
+    def test_large_errors_linear(self):
+        """Test that large errors (>= beta) use linear loss."""
+        beta = 1.0
+        loss_fn = SmoothL1Loss(beta=beta, reduction="none")
+
+        # Large errors (>= beta)
+        predictions = torch.tensor([[[[2.0]]]])
+        targets = torch.tensor([[[[0.0]]]])
+
+        loss = loss_fn(predictions, targets)
+        expected = 2.0 - 0.5 * beta
+
+        assert torch.isclose(loss, torch.tensor(expected), rtol=1e-5)
+
+    def test_beta_threshold(self):
+        """Test behavior exactly at beta threshold."""
+        beta = 1.0
+        loss_fn = SmoothL1Loss(beta=beta, reduction="none")
+
+        # Error exactly at beta
+        predictions = torch.tensor([[[[1.0]]]])
+        targets = torch.tensor([[[[0.0]]]])
+
+        loss = loss_fn(predictions, targets)
+
+        # At threshold, linear formula applies: |diff| - 0.5 * beta
+        expected = 1.0 - 0.5 * beta
+
+        assert torch.isclose(loss, torch.tensor(expected), rtol=1e-5)
+
+    def test_beta_effect_on_robustness(self):
+        """Test that smaller beta transitions to linear regime earlier."""
+        loss_fn_beta1 = SmoothL1Loss(beta=1.0, reduction="none")
+        loss_fn_beta01 = SmoothL1Loss(beta=0.1, reduction="none")
+
+        # Medium error that's in quadratic regime for beta=1.0 but linear for beta=0.1
+        predictions = torch.tensor([[[[0.5]]]])
+        targets = torch.tensor([[[[0.0]]]])
+
+        loss_beta1 = loss_fn_beta1(predictions, targets)
+        loss_beta01 = loss_fn_beta01(predictions, targets)
+
+        # For diff=0.5: beta=1.0 is quadratic (0.125), beta=0.1 is linear (0.45)
+        # Linear regime has lower growth rate for large errors
+        assert loss_beta1 < loss_beta01  # Quadratic is smaller for medium errors
+
+    def test_reduction_none(self):
+        """Test reduction='none' returns per-element losses."""
+        loss_fn = SmoothL1Loss(beta=1.0, reduction="none")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss = loss_fn(predictions, targets)
+
+        # Should return same shape as input
+        assert loss.shape == predictions.shape
+        assert (loss >= 0).all()
+
+    def test_reduction_sum(self):
+        """Test reduction='sum' returns sum of losses."""
+        loss_fn_sum = SmoothL1Loss(beta=1.0, reduction="sum")
+        loss_fn_none = SmoothL1Loss(beta=1.0, reduction="none")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss_sum = loss_fn_sum(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_sum = loss_none.sum()
+        assert torch.isclose(loss_sum, expected_sum, rtol=1e-5)
+
+    def test_reduction_mean(self):
+        """Test reduction='mean' returns mean of losses."""
+        loss_fn_mean = SmoothL1Loss(beta=1.0, reduction="mean")
+        loss_fn_none = SmoothL1Loss(beta=1.0, reduction="none")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss_mean = loss_fn_mean(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_mean = loss_none.mean()
+        assert torch.isclose(loss_mean, expected_mean, rtol=1e-5)
+
+    def test_shape_mismatch_error(self):
+        """Test error on shape mismatch."""
+        loss_fn = SmoothL1Loss()
+
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = torch.randn(2, 3, 4, 4, 4)  # Wrong shape
+
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            loss_fn(predictions, targets)
+
+    def test_gradient_flow(self):
+        """Test gradient flow through loss."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 3, 4, 4, 4, requires_grad=True)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        assert predictions.grad is not None
+        assert not torch.all(predictions.grad == 0)
+
+    def test_2d_images(self):
+        """Test with 2D images (B, C, H, W)."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 3, 64, 64)
+        targets = torch.randn(2, 3, 64, 64)
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_3d_volumes(self):
+        """Test with 3D volumes (B, C, D, H, W)."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 3, 16, 16, 16)
+        targets = torch.randn(2, 3, 16, 16, 16)
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_single_channel(self):
+        """Test with single channel (e.g., diameter)."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 1, 8, 8, 8)
+        targets = torch.randn(2, 1, 8, 8, 8)
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss >= 0
+
+    def test_multi_channel(self):
+        """Test with multi-channel (e.g., 3D size)."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        # 3 channels for (width, height, depth)
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = torch.randn(2, 3, 8, 8, 8)
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss >= 0
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        batch_sizes = [1, 2, 4, 8]
+        for batch_size in batch_sizes:
+            predictions = torch.randn(batch_size, 3, 8, 8, 8)
+            targets = torch.randn(batch_size, 3, 8, 8, 8)
+
+            loss = loss_fn(predictions, targets)
+            assert loss.ndim == 0  # Scalar with mean reduction
+
+    def test_numerical_stability(self):
+        """Test numerical stability with extreme values."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        # Very large values
+        predictions = torch.randn(2, 3, 4, 4, 4) * 1000
+        targets = torch.randn(2, 3, 4, 4, 4) * 1000
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert not torch.isnan(loss)
+
+    def test_symmetry(self):
+        """Test that loss is symmetric (same for swapped inputs)."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss1 = loss_fn(predictions, targets)
+        loss2 = loss_fn(targets, predictions)
+
+        assert torch.isclose(loss1, loss2)
+
+    def test_deterministic_output(self):
+        """Test deterministic behavior."""
+        loss_fn = SmoothL1Loss(beta=1.0)
+
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = torch.randn(2, 3, 8, 8, 8)
+
+        loss1 = loss_fn(predictions, targets)
+        loss2 = loss_fn(predictions, targets)
+
+        assert torch.equal(loss1, loss2)
+
+    def test_integration_with_size_regression_head(self):
+        """Test integration with size regression head."""
+        from src.model.unet import SizeRegressionHead
+
+        loss_fn = SmoothL1Loss(beta=1.0)
+        head = SizeRegressionHead(in_channels=32)
+
+        features = torch.randn(2, 32, 16, 16, 16)
+        predictions = head(features)  # 3D size predictions (B, 3, 1, 1, 1)
+        targets = torch.randn(2, 3, 1, 1, 1)  # Match pooled shape
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss >= 0
+        assert not torch.isnan(loss)
+
+    def test_backward_pass_with_model(self):
+        """Test backward pass through model and loss."""
+        from src.model.unet import SizeRegressionHead
+
+        loss_fn = SmoothL1Loss(beta=1.0)
+        head = SizeRegressionHead(in_channels=32)
+
+        features = torch.randn(2, 32, 8, 8, 8, requires_grad=True)
+        predictions = head(features)
+        targets = torch.randn(2, 3, 1, 1, 1)  # Match pooled shape
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        # Check gradients exist
+        assert features.grad is not None
+        for param in head.parameters():
+            assert param.grad is not None
+
+    def test_comparison_with_pytorch_smooth_l1(self):
+        """Test that our implementation matches PyTorch's SmoothL1Loss."""
+        import torch.nn as nn
+
+        beta = 1.0
+        loss_fn_ours = SmoothL1Loss(beta=beta, reduction="mean")
+        # PyTorch uses beta parameter for the threshold
+        loss_fn_pytorch = nn.SmoothL1Loss(beta=beta, reduction="mean")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss_ours = loss_fn_ours(predictions, targets)
+        loss_pytorch = loss_fn_pytorch(predictions, targets)
+
+        # Should match PyTorch implementation
+        assert torch.isclose(loss_ours, loss_pytorch, rtol=1e-5)
+
+    def test_comparison_with_pytorch_different_beta(self):
+        """Test beta parameter matches PyTorch implementation."""
+        import torch.nn as nn
+
+        beta = 0.5
+        loss_fn_ours = SmoothL1Loss(beta=beta, reduction="sum")
+        loss_fn_pytorch = nn.SmoothL1Loss(beta=beta, reduction="sum")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randn(2, 3, 4, 4, 4)
+
+        loss_ours = loss_fn_ours(predictions, targets)
+        loss_pytorch = loss_fn_pytorch(predictions, targets)
+
+        # Should match PyTorch implementation
+        assert torch.isclose(loss_ours, loss_pytorch, rtol=1e-5)
+
+    def test_less_sensitive_to_outliers_than_mse(self):
+        """Test that Smooth L1 is less sensitive to outliers than MSE."""
+        import torch.nn as nn
+
+        smooth_l1_loss = SmoothL1Loss(beta=1.0, reduction="mean")
+        mse_loss = nn.MSELoss(reduction="mean")
+
+        # Most predictions are good, one is a large outlier
+        predictions = torch.tensor(
+            [[[[1.0, 1.0, 1.0, 100.0]]]]  # One outlier
+        )
+        targets = torch.tensor([[[[1.0, 1.0, 1.0, 1.0]]]])
+
+        loss_smooth = smooth_l1_loss(predictions, targets)
+        loss_mse = mse_loss(predictions, targets)
+
+        # Smooth L1 should be much less than MSE due to linear scaling
+        # MSE will be dominated by (100-1)^2 = 9801, while Smooth L1 is ~99
+        assert loss_smooth < loss_mse / 10
