@@ -170,6 +170,42 @@ class DecoderBlock(nn.Module):
         return x
 
 
+class BottleneckBlock(nn.Module):
+    """Bottleneck block at the deepest layer of U-Net.
+
+    The bottleneck processes features at the lowest spatial resolution
+    and highest feature dimension. Unlike encoder blocks, it has no
+    pooling, and unlike decoder blocks, it has no upsampling.
+
+    Architecture: DoubleConv3D without pooling or upsampling
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+    ):
+        """Initialize bottleneck block.
+
+        Args:
+            in_channels: Number of input channels from last encoder
+            out_channels: Number of output channels (typically 2x in_channels)
+        """
+        super().__init__()
+        self.conv = DoubleConv3D(in_channels, out_channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through bottleneck.
+
+        Args:
+            x: Input tensor [B, in_channels, D, H, W]
+
+        Returns:
+            Output tensor [B, out_channels, D, H, W]
+        """
+        return self.conv(x)
+
+
 class UNet3D(nn.Module):
     """3D U-Net for volumetric medical image segmentation.
 
@@ -219,8 +255,8 @@ class UNet3D(nn.Module):
             self.encoders.append(EncoderBlock(in_ch, features))
             features *= 2
 
-        # Bottleneck (deepest layer, no pooling)
-        self.bottleneck = DoubleConv3D(features // 2, features)
+        # Bottleneck (deepest layer, no pooling or upsampling)
+        self.bottleneck = BottleneckBlock(features // 2, features)
 
         # Build decoder blocks
         self.decoders = nn.ModuleList()

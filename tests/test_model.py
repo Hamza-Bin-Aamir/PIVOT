@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.model.unet import DecoderBlock, DoubleConv3D, EncoderBlock, UNet3D
+from src.model.unet import (
+    BottleneckBlock,
+    DecoderBlock,
+    DoubleConv3D,
+    EncoderBlock,
+    UNet3D,
+)
 
 
 class TestDoubleConv3D:
@@ -135,6 +141,120 @@ class TestEncoderBlock:
         assert pooled.shape[2:] != x.shape[2:]
 
 
+class TestBottleneckBlock:
+    """Tests for BottleneckBlock."""
+
+    def test_bottleneck_initialization(self):
+        """Test BottleneckBlock initializes correctly."""
+        bottleneck = BottleneckBlock(in_channels=128, out_channels=256)
+
+        assert isinstance(bottleneck.conv, DoubleConv3D)
+        assert bottleneck.conv.double_conv[0].in_channels == 128
+        assert bottleneck.conv.double_conv[0].out_channels == 256
+
+    def test_bottleneck_forward_shape(self):
+        """Test bottleneck output shape."""
+        bottleneck = BottleneckBlock(in_channels=64, out_channels=128)
+
+        x = torch.randn(2, 64, 4, 4, 4)
+        output = bottleneck(x)
+
+        # Bottleneck preserves spatial dimensions
+        assert output.shape == (2, 128, 4, 4, 4)
+
+    def test_bottleneck_channel_progression(self):
+        """Test bottleneck doubles feature channels."""
+        bottleneck = BottleneckBlock(in_channels=256, out_channels=512)
+
+        x = torch.randn(1, 256, 2, 2, 2)
+        output = bottleneck(x)
+
+        assert output.shape[1] == 512  # Channels doubled
+
+    def test_bottleneck_preserves_spatial_dims(self):
+        """Test bottleneck doesn't change spatial dimensions."""
+        bottleneck = BottleneckBlock(in_channels=128, out_channels=256)
+
+        # Test various spatial sizes
+        test_sizes = [(4, 4, 4), (8, 8, 8), (2, 2, 2)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 128, *size)
+            output = bottleneck(x)
+            assert output.shape[2:] == size
+
+    def test_bottleneck_batch_sizes(self):
+        """Test bottleneck handles different batch sizes."""
+        bottleneck = BottleneckBlock(in_channels=64, out_channels=128)
+
+        for batch_size in [1, 2, 4, 8]:
+            x = torch.randn(batch_size, 64, 4, 4, 4)
+            output = bottleneck(x)
+            assert output.shape == (batch_size, 128, 4, 4, 4)
+
+    def test_bottleneck_gradients(self):
+        """Test gradients flow through bottleneck."""
+        bottleneck = BottleneckBlock(in_channels=64, out_channels=128)
+        x = torch.randn(1, 64, 4, 4, 4, requires_grad=True)
+
+        output = bottleneck(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_bottleneck_eval_mode(self):
+        """Test bottleneck in evaluation mode."""
+        bottleneck = BottleneckBlock(in_channels=64, out_channels=128)
+        bottleneck.eval()
+
+        x = torch.randn(2, 64, 4, 4, 4)
+
+        with torch.no_grad():
+            output = bottleneck(x)
+
+        assert output.shape == (2, 128, 4, 4, 4)
+        assert not output.requires_grad
+
+    def test_bottleneck_reproducibility(self):
+        """Test bottleneck produces consistent outputs."""
+        bottleneck = BottleneckBlock(in_channels=64, out_channels=128)
+        bottleneck.eval()
+
+        x = torch.randn(1, 64, 4, 4, 4)
+
+        with torch.no_grad():
+            output1 = bottleneck(x)
+            output2 = bottleneck(x)
+
+        assert torch.allclose(output1, output2)
+
+    def test_bottleneck_no_pooling(self):
+        """Test bottleneck doesn't reduce spatial dimensions."""
+        bottleneck = BottleneckBlock(in_channels=128, out_channels=256)
+
+        x = torch.randn(1, 128, 8, 8, 8)
+        output = bottleneck(x)
+
+        # Unlike encoder, no pooling/downsampling
+        assert output.shape[2:] == x.shape[2:]
+
+    def test_bottleneck_feature_extraction(self):
+        """Test bottleneck extracts meaningful features."""
+        bottleneck = BottleneckBlock(in_channels=64, out_channels=128)
+
+        x = torch.randn(2, 64, 4, 4, 4)
+        output = bottleneck(x)
+
+        # Output should have different values than input (not identity)
+        assert not torch.allclose(output[:, :64], x, atol=1e-2)
+
+        # Output should not be all zeros or NaN
+        assert not torch.isnan(output).any()
+        assert not (output == 0).all()
+
+
 class TestDecoderBlock:
     """Tests for DecoderBlock."""
 
@@ -248,8 +368,8 @@ class TestUNet3DEncoder:
         model = UNet3D(init_features=32, depth=3)
 
         # After 3 encoder levels: 32 -> 64 -> 128 -> 256 (bottleneck)
-        assert model.bottleneck.double_conv[0].in_channels == 128
-        assert model.bottleneck.double_conv[0].out_channels == 256
+        assert model.bottleneck.conv.double_conv[0].in_channels == 128
+        assert model.bottleneck.conv.double_conv[0].out_channels == 256
 
     def test_unet_forward_wrong_dimensions(self):
         """Test UNet raises error for wrong input dimensions."""
