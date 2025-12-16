@@ -10,6 +10,7 @@ from src.model.unet import (
     DecoderBlock,
     DoubleConv3D,
     EncoderBlock,
+    SegmentationHead,
     UNet3D,
 )
 
@@ -731,3 +732,208 @@ class TestUNet3DDecoder:
 
         assert not torch.isnan(output).any()
         assert not torch.isinf(output).any()
+
+
+class TestSegmentationHead:
+    """Tests for SegmentationHead."""
+
+    def test_segmentation_head_initialization(self):
+        """Test SegmentationHead initializes correctly."""
+        head = SegmentationHead(in_channels=32)
+
+        assert head.in_channels == 32
+        assert not head.apply_sigmoid
+        assert head.conv.in_channels == 32
+        assert head.conv.out_channels == 1
+        assert head.conv.kernel_size == (1, 1, 1)
+
+    def test_segmentation_head_with_sigmoid(self):
+        """Test SegmentationHead with sigmoid activation."""
+        head = SegmentationHead(in_channels=64, apply_sigmoid=True)
+
+        assert head.apply_sigmoid
+
+    def test_segmentation_head_forward_shape(self):
+        """Test segmentation head output shape."""
+        head = SegmentationHead(in_channels=32)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Output should have single channel (binary segmentation)
+        assert output.shape == (2, 1, 16, 16, 16)
+
+    def test_segmentation_head_preserves_spatial_dims(self):
+        """Test segmentation head preserves spatial dimensions."""
+        head = SegmentationHead(in_channels=64)
+
+        test_sizes = [(16, 16, 16), (32, 32, 32), (64, 64, 64), (8, 12, 16)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            assert output.shape[2:] == size
+
+    def test_segmentation_head_logits_output(self):
+        """Test segmentation head produces logits without sigmoid."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Logits can be any real value
+        assert output.shape == (2, 1, 16, 16, 16)
+        # Should have values outside [0, 1] range (logits)
+        assert (output < 0).any() or (output > 1).any()
+
+    def test_segmentation_head_sigmoid_output(self):
+        """Test segmentation head produces probabilities with sigmoid."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=True)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Probabilities should be in [0, 1]
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_segmentation_head_batch_sizes(self):
+        """Test segmentation head handles different batch sizes."""
+        head = SegmentationHead(in_channels=64)
+
+        for batch_size in [1, 2, 4, 8]:
+            x = torch.randn(batch_size, 64, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (batch_size, 1, 16, 16, 16)
+
+    def test_segmentation_head_different_channels(self):
+        """Test segmentation head with different input channels."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for in_ch in test_channels:
+            head = SegmentationHead(in_channels=in_ch)
+            x = torch.randn(1, in_ch, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (1, 1, 16, 16, 16)
+
+    def test_segmentation_head_gradients(self):
+        """Test gradients flow through segmentation head."""
+        head = SegmentationHead(in_channels=32)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_segmentation_head_gradients_with_sigmoid(self):
+        """Test gradients flow through segmentation head with sigmoid."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=True)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_segmentation_head_eval_mode(self):
+        """Test segmentation head in evaluation mode."""
+        head = SegmentationHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert not output.requires_grad
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_segmentation_head_wrong_dimensions(self):
+        """Test segmentation head raises error for wrong input dimensions."""
+        head = SegmentationHead(in_channels=32)
+
+        # 4D input (missing dimension)
+        x_4d = torch.randn(2, 32, 16, 16)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 6D input (extra dimension)
+        x_6d = torch.randn(2, 32, 16, 16, 16, 1)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_6d)
+
+    def test_segmentation_head_reproducibility(self):
+        """Test segmentation head produces consistent outputs."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(1, 32, 16, 16, 16)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        assert torch.allclose(output1, output2)
+
+    def test_segmentation_head_no_nan_output(self):
+        """Test segmentation head doesn't produce NaN outputs."""
+        head = SegmentationHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_segmentation_head_works_with_unet_output(self):
+        """Test segmentation head works with U-Net backbone output."""
+        # Create a small U-Net
+        unet = UNet3D(in_channels=1, out_channels=32, init_features=16, depth=2)
+        head = SegmentationHead(in_channels=32)
+
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        # Pass through U-Net
+        features = unet(x)
+        assert features.shape == (1, 32, 32, 32, 32)
+
+        # Pass through segmentation head
+        segmentation = head(features)
+        assert segmentation.shape == (1, 1, 32, 32, 32)
+
+    def test_segmentation_head_binary_output(self):
+        """Test segmentation head produces single channel output."""
+        head = SegmentationHead(in_channels=128)
+
+        x = torch.randn(4, 128, 8, 8, 8)
+        output = head(x)
+
+        # Binary segmentation: single channel
+        assert output.shape[1] == 1
+
+    def test_segmentation_head_integration_with_loss(self):
+        """Test segmentation head output compatible with BCE loss."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        target = torch.randint(0, 2, (2, 1, 16, 16, 16)).float()
+
+        output = head(x)
+
+        # Should work with BCE with logits loss
+        loss_fn = torch.nn.BCEWithLogitsLoss()
+        loss = loss_fn(output, target)
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)

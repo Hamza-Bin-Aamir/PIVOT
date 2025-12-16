@@ -303,3 +303,68 @@ class UNet3D(nn.Module):
         x = self.output_conv(x)
 
         return x
+
+
+class SegmentationHead(nn.Module):
+    """Segmentation head for binary nodule mask prediction.
+
+    Produces pixel-wise binary segmentation masks indicating nodule regions.
+    Uses a simple 1x1x1 convolution to map backbone features to a single
+    output channel, followed by sigmoid activation for probability output.
+
+    Architecture: Conv3d(1x1x1) -> Sigmoid (optional, for inference)
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        apply_sigmoid: bool = False,
+    ):
+        """Initialize segmentation head.
+
+        Args:
+            in_channels: Number of input channels from backbone
+            apply_sigmoid: Whether to apply sigmoid activation.
+                          Set False during training (loss handles it),
+                          True during inference for probability output.
+        """
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.apply_sigmoid = apply_sigmoid
+
+        # 1x1x1 convolution for segmentation logits
+        self.conv = nn.Conv3d(
+            in_channels,
+            1,  # Binary segmentation (nodule vs background)
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through segmentation head.
+
+        Args:
+            x: Input features from backbone [B, in_channels, D, H, W]
+
+        Returns:
+            Segmentation output [B, 1, D, H, W]
+            - Logits if apply_sigmoid=False (for training with BCE loss)
+            - Probabilities if apply_sigmoid=True (for inference)
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate segmentation logits
+        x = self.conv(x)
+
+        # Optionally apply sigmoid for inference
+        if self.apply_sigmoid:
+            x = torch.sigmoid(x)
+
+        return x
