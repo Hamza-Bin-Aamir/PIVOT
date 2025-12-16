@@ -434,3 +434,64 @@ class CenterDetectionHead(nn.Module):
             x = torch.sigmoid(x)
 
         return x
+
+
+class SizeRegressionHead(nn.Module):
+    """Size regression head for predicting 3D nodule dimensions.
+
+    Predicts diameter values in three dimensions (x, y, z) for detected nodules.
+    Uses 1x1x1 convolution to transform feature maps to 3-channel size predictions.
+    Designed for smooth L1 loss training.
+
+    Args:
+        in_channels (int): Number of input feature channels
+        use_global_pool (bool): If True, applies global average pooling to convert
+                                spatial feature maps to single size prediction per sample.
+                                Default: True for standard size regression.
+
+    Attributes:
+        conv (nn.Conv3d): 1x1x1 convolution layer for size prediction
+        pool (nn.AdaptiveAvgPool3d | None): Optional global pooling layer
+    """
+
+    def __init__(self, in_channels: int, use_global_pool: bool = True) -> None:
+        """Initialize size regression head.
+
+        Args:
+            in_channels: Number of input feature channels
+            use_global_pool: Whether to use global average pooling
+        """
+        super().__init__()
+
+        # 1x1x1 conv: in_channels -> 3 (diameter_x, diameter_y, diameter_z)
+        self.conv = nn.Conv3d(in_channels, 3, kernel_size=1)
+
+        # Optional global pooling for spatial-to-vector prediction
+        self.pool = nn.AdaptiveAvgPool3d(1) if use_global_pool else None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass for size regression.
+
+        Args:
+            x: Input feature tensor of shape (B, C, D, H, W)
+
+        Returns:
+            Size predictions:
+            - (B, 3, 1, 1, 1) if use_global_pool=True
+            - (B, 3, D, H, W) if use_global_pool=False
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate size regression values
+        x = self.conv(x)
+
+        # Optionally apply global pooling
+        if self.pool is not None:
+            x = self.pool(x)
+
+        return x

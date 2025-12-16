@@ -7,6 +7,7 @@ from .unet import (
     DoubleConv3D,
     EncoderBlock,
     SegmentationHead,
+    SizeRegressionHead,
     UNet3D,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "DoubleConv3D",
     "EncoderBlock",
     "SegmentationHead",
+    "SizeRegressionHead",
     "UNet3D",
 ]
