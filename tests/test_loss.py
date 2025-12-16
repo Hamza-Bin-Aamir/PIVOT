@@ -8,6 +8,7 @@ import torch
 from src.loss.bce import BCELoss
 from src.loss.dice import DiceLoss
 from src.loss.focal import FocalLoss
+from src.loss.multi_task import MultiTaskLoss
 from src.loss.smooth_l1 import SmoothL1Loss
 from src.loss.weighted_bce import WeightedBCELoss
 
@@ -1827,3 +1828,460 @@ class TestWeightedBCELoss:
 
         # Should be similar when no positive weighting is applied
         assert torch.isclose(loss_weighted, loss_bce, rtol=1e-4)
+
+
+class TestMultiTaskLoss:
+    """Test suite for MultiTaskLoss."""
+
+    def test_init_default(self):
+        """Test default initialization."""
+        loss_fn = MultiTaskLoss()
+
+        assert loss_fn.seg_weight == 1.0
+        assert loss_fn.center_weight == 1.0
+        assert loss_fn.size_weight == 1.0
+        assert loss_fn.triage_weight == 1.0
+        assert loss_fn.reduction == "mean"
+        assert isinstance(loss_fn.seg_loss, DiceLoss)
+        assert isinstance(loss_fn.center_loss, FocalLoss)
+        assert isinstance(loss_fn.size_loss, SmoothL1Loss)
+        assert isinstance(loss_fn.triage_loss, WeightedBCELoss)
+
+    def test_init_custom_weights(self):
+        """Test initialization with custom task weights."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=2.0,
+            center_weight=1.5,
+            size_weight=0.5,
+            triage_weight=3.0,
+        )
+
+        assert loss_fn.seg_weight == 2.0
+        assert loss_fn.center_weight == 1.5
+        assert loss_fn.size_weight == 0.5
+        assert loss_fn.triage_weight == 3.0
+
+    def test_init_custom_loss_kwargs(self):
+        """Test initialization with custom loss-specific kwargs."""
+        loss_fn = MultiTaskLoss(
+            seg_loss_kwargs={"smooth": 2.0},
+            center_loss_kwargs={"alpha": 0.5, "gamma": 3.0},
+            size_loss_kwargs={"beta": 0.5},
+            triage_loss_kwargs={"pos_weight": 3.0},
+        )
+
+        assert loss_fn.seg_loss.smooth == 2.0
+        assert loss_fn.center_loss.alpha == 0.5
+        assert loss_fn.center_loss.gamma == 3.0
+        assert loss_fn.size_loss.beta == 0.5
+        assert loss_fn.triage_loss.pos_weight == 3.0
+
+    def test_init_custom_reduction(self):
+        """Test initialization with custom reduction."""
+        loss_fn_none = MultiTaskLoss(reduction="none")
+        loss_fn_sum = MultiTaskLoss(reduction="sum")
+
+        assert loss_fn_none.reduction == "none"
+        assert loss_fn_sum.reduction == "sum"
+
+    def test_init_invalid_reduction(self):
+        """Test initialization with invalid reduction."""
+        with pytest.raises(ValueError, match="Invalid reduction"):
+            MultiTaskLoss(reduction="invalid")
+
+    def test_forward_basic(self):
+        """Test basic forward pass."""
+        loss_fn = MultiTaskLoss()
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),  # Pooled output
+            "triage": torch.randn(2, 1, 1, 1, 1),  # Pooled output
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        loss = loss_fn(predictions, targets)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_forward_with_task_weights(self):
+        """Test forward pass with different task weights."""
+        loss_fn_equal = MultiTaskLoss(
+            seg_weight=1.0,
+            center_weight=1.0,
+            size_weight=1.0,
+            triage_weight=1.0,
+        )
+        loss_fn_weighted = MultiTaskLoss(
+            seg_weight=2.0,
+            center_weight=1.0,
+            size_weight=0.5,
+            triage_weight=0.5,
+        )
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        loss_equal = loss_fn_equal(predictions, targets)
+        loss_weighted = loss_fn_weighted(predictions, targets)
+
+        # Weighted loss should be different due to different task weights
+        assert not torch.isclose(loss_equal, loss_weighted, rtol=1e-4)
+
+    def test_forward_reduction_none(self):
+        """Test forward pass with reduction='none'."""
+        loss_fn = MultiTaskLoss(reduction="none")
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        losses = loss_fn(predictions, targets)
+
+        assert isinstance(losses, dict)
+        assert "segmentation" in losses
+        assert "center" in losses
+        assert "size" in losses
+        assert "triage" in losses
+        assert "total" in losses
+
+        # All losses should be scalars
+        for _key, loss in losses.items():
+            assert isinstance(loss, torch.Tensor)
+            assert loss.dim() == 0
+            assert loss.item() >= 0
+
+    def test_forward_reduction_sum(self):
+        """Test forward pass with reduction='sum'."""
+        loss_fn_mean = MultiTaskLoss(reduction="mean")
+        loss_fn_sum = MultiTaskLoss(reduction="sum")
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        loss_mean = loss_fn_mean(predictions, targets)
+        loss_sum = loss_fn_sum(predictions, targets)
+
+        # Both should be equal (sum/mean applies to aggregation, not individual losses)
+        assert torch.isclose(loss_sum, loss_mean, rtol=1e-4)
+
+    def test_forward_missing_prediction_key(self):
+        """Test forward pass with missing prediction key."""
+        loss_fn = MultiTaskLoss()
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            # Missing 'triage'
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        with pytest.raises(ValueError, match="triage"):
+            loss_fn(predictions, targets)
+
+    def test_forward_missing_target_key(self):
+        """Test forward pass with missing target key."""
+        loss_fn = MultiTaskLoss()
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            # Missing 'size'
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        with pytest.raises(ValueError, match="size"):
+            loss_fn(predictions, targets)
+
+    def test_get_task_weights(self):
+        """Test get_task_weights method."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=2.0,
+            center_weight=1.5,
+            size_weight=0.8,
+            triage_weight=3.0,
+        )
+
+        weights = loss_fn.get_task_weights()
+
+        assert isinstance(weights, dict)
+        assert weights["segmentation"] == 2.0
+        assert weights["center"] == 1.5
+        assert weights["size"] == 0.8
+        assert weights["triage"] == 3.0
+
+    def test_set_task_weights_all(self):
+        """Test set_task_weights with all weights."""
+        loss_fn = MultiTaskLoss()
+
+        loss_fn.set_task_weights(
+            seg_weight=2.0,
+            center_weight=1.5,
+            size_weight=0.8,
+            triage_weight=3.0,
+        )
+
+        assert loss_fn.seg_weight == 2.0
+        assert loss_fn.center_weight == 1.5
+        assert loss_fn.size_weight == 0.8
+        assert loss_fn.triage_weight == 3.0
+
+    def test_set_task_weights_partial(self):
+        """Test set_task_weights with partial weights."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=1.0,
+            center_weight=1.0,
+            size_weight=1.0,
+            triage_weight=1.0,
+        )
+
+        loss_fn.set_task_weights(seg_weight=2.0, triage_weight=3.0)
+
+        assert loss_fn.seg_weight == 2.0
+        assert loss_fn.center_weight == 1.0
+        assert loss_fn.size_weight == 1.0
+        assert loss_fn.triage_weight == 3.0
+
+    def test_set_task_weights_invalid_key(self):
+        """Test set_task_weights with invalid weight key."""
+        loss_fn = MultiTaskLoss()
+
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            loss_fn.set_task_weights(invalid_weight=2.0)
+
+    def test_gradient_flow(self):
+        """Test gradient flow through the loss."""
+        loss_fn = MultiTaskLoss()
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8, requires_grad=True),
+            "center": torch.randn(2, 1, 8, 8, 8, requires_grad=True),
+            "size": torch.randn(2, 3, 1, 1, 1, requires_grad=True),
+            "triage": torch.randn(2, 1, 1, 1, 1, requires_grad=True),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        # Check gradients exist
+        assert predictions["segmentation"].grad is not None
+        assert predictions["center"].grad is not None
+        assert predictions["size"].grad is not None
+        assert predictions["triage"].grad is not None
+
+    def test_different_batch_sizes(self):
+        """Test with different batch sizes."""
+        loss_fn = MultiTaskLoss()
+
+        for batch_size in [1, 2, 4, 8]:
+            predictions = {
+                "segmentation": torch.randn(batch_size, 1, 8, 8, 8),
+                "center": torch.randn(batch_size, 1, 8, 8, 8),
+                "size": torch.randn(batch_size, 3, 1, 1, 1),
+                "triage": torch.randn(batch_size, 1, 1, 1, 1),
+            }
+            targets = {
+                "segmentation": torch.randint(0, 2, (batch_size, 1, 8, 8, 8)).float(),
+                "center": torch.randint(0, 2, (batch_size, 1, 8, 8, 8)).float(),
+                "size": torch.randn(batch_size, 3, 1, 1, 1),
+                "triage": torch.randint(0, 2, (batch_size, 1, 1, 1, 1)).float(),
+            }
+
+            loss = loss_fn(predictions, targets)
+            assert loss.dim() == 0
+            assert loss.item() >= 0
+
+    def test_zero_weights(self):
+        """Test with zero task weights."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=0.0,
+            center_weight=0.0,
+            size_weight=0.0,
+            triage_weight=0.0,
+        )
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        loss = loss_fn(predictions, targets)
+        assert torch.isclose(loss, torch.tensor(0.0), atol=1e-6)
+
+    def test_individual_loss_components(self):
+        """Test individual loss components with reduction='none'."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=2.0,
+            center_weight=1.5,
+            size_weight=0.5,
+            triage_weight=3.0,
+            reduction="none",
+        )
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        losses = loss_fn(predictions, targets)
+
+        # Total should be sum of weighted individual losses (already weighted)
+        expected_total = (
+            losses["segmentation"] + losses["center"] + losses["size"] + losses["triage"]
+        )
+        assert torch.isclose(losses["total"], expected_total, rtol=1e-4)
+
+    def test_integration_with_model_output(self):
+        """Test integration with typical model output format."""
+        # Simulate MultiTaskUNet3D output
+        from src.model import MultiTaskUNet3D
+
+        model = MultiTaskUNet3D()
+        loss_fn = MultiTaskLoss()
+
+        # Create input
+        x = torch.randn(1, 1, 64, 64, 64)
+
+        # Get predictions
+        predictions = model(x)
+
+        # Create targets with matching shapes
+        targets = {
+            "segmentation": torch.randint(0, 2, (1, 1, 64, 64, 64)).float(),
+            "center": torch.randint(0, 2, (1, 1, 64, 64, 64)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        # Compute loss
+        loss = loss_fn(predictions, targets)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_dynamic_weight_adjustment(self):
+        """Test dynamic weight adjustment during training loop."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=1.0,
+            center_weight=1.0,
+            size_weight=1.0,
+            triage_weight=1.0,
+        )
+
+        predictions = {
+            "segmentation": torch.randn(2, 1, 8, 8, 8),
+            "center": torch.randn(2, 1, 8, 8, 8),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randn(2, 1, 1, 1, 1),
+        }
+        targets = {
+            "segmentation": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "center": torch.randint(0, 2, (2, 1, 8, 8, 8)).float(),
+            "size": torch.randn(2, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (2, 1, 1, 1, 1)).float(),
+        }
+
+        # Initial loss
+        loss1 = loss_fn(predictions, targets)
+
+        # Adjust weights
+        loss_fn.set_task_weights(seg_weight=2.0, center_weight=0.5)
+
+        # Loss should be different
+        loss2 = loss_fn(predictions, targets)
+        assert not torch.isclose(loss1, loss2, rtol=1e-4)
+
+        # Verify weights changed
+        weights = loss_fn.get_task_weights()
+        assert weights["segmentation"] == 2.0
+        assert weights["center"] == 0.5
+
+    def test_repr(self):
+        """Test string representation."""
+        loss_fn = MultiTaskLoss(
+            seg_weight=2.0,
+            center_weight=1.5,
+            size_weight=0.8,
+            triage_weight=3.0,
+        )
+
+        repr_str = repr(loss_fn)
+
+        assert "MultiTaskLoss" in repr_str
+        # Check that loss components are present
+        assert "seg_loss" in repr_str or "DiceLoss" in repr_str
+        assert "center_loss" in repr_str or "FocalLoss" in repr_str
+        assert "size_loss" in repr_str or "SmoothL1Loss" in repr_str
+        assert "triage_loss" in repr_str or "WeightedBCELoss" in repr_str
