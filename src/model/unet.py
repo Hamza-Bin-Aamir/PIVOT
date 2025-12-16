@@ -303,3 +303,281 @@ class UNet3D(nn.Module):
         x = self.output_conv(x)
 
         return x
+
+
+class SegmentationHead(nn.Module):
+    """Segmentation head for binary nodule mask prediction.
+
+    Produces pixel-wise binary segmentation masks indicating nodule regions.
+    Uses a simple 1x1x1 convolution to map backbone features to a single
+    output channel, followed by sigmoid activation for probability output.
+
+    Architecture: Conv3d(1x1x1) -> Sigmoid (optional, for inference)
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        apply_sigmoid: bool = False,
+    ):
+        """Initialize segmentation head.
+
+        Args:
+            in_channels: Number of input channels from backbone
+            apply_sigmoid: Whether to apply sigmoid activation.
+                          Set False during training (loss handles it),
+                          True during inference for probability output.
+        """
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.apply_sigmoid = apply_sigmoid
+
+        # 1x1x1 convolution for segmentation logits
+        self.conv = nn.Conv3d(
+            in_channels,
+            1,  # Binary segmentation (nodule vs background)
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through segmentation head.
+
+        Args:
+            x: Input features from backbone [B, in_channels, D, H, W]
+
+        Returns:
+            Segmentation output [B, 1, D, H, W]
+            - Logits if apply_sigmoid=False (for training with BCE loss)
+            - Probabilities if apply_sigmoid=True (for inference)
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate segmentation logits
+        x = self.conv(x)
+
+        # Optionally apply sigmoid for inference
+        if self.apply_sigmoid:
+            x = torch.sigmoid(x)
+
+        return x
+
+
+class CenterDetectionHead(nn.Module):
+    """Center point detection head for nodule localization via heatmap.
+
+    Produces a probability heatmap indicating nodule center locations.
+    Uses a 1x1x1 convolution to map backbone features to a single output
+    channel representing a center point heatmap with Gaussian peaks at
+    nodule centers.
+
+    Architecture: Conv3d(1x1x1) -> Sigmoid (optional, for inference)
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        apply_sigmoid: bool = False,
+    ):
+        """Initialize center detection head.
+
+        Args:
+            in_channels: Number of input channels from backbone
+            apply_sigmoid: Whether to apply sigmoid activation.
+                          Set False during training (focal loss handles it),
+                          True during inference for probability heatmap.
+        """
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.apply_sigmoid = apply_sigmoid
+
+        # 1x1x1 convolution for center heatmap logits
+        self.conv = nn.Conv3d(
+            in_channels,
+            1,  # Single channel heatmap
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through center detection head.
+
+        Args:
+            x: Input features from backbone [B, in_channels, D, H, W]
+
+        Returns:
+            Center heatmap output [B, 1, D, H, W]
+            - Logits if apply_sigmoid=False (for training with focal loss)
+            - Probabilities if apply_sigmoid=True (for inference/peak detection)
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate center heatmap logits
+        x = self.conv(x)
+
+        # Optionally apply sigmoid for inference
+        if self.apply_sigmoid:
+            x = torch.sigmoid(x)
+
+        return x
+
+
+class SizeRegressionHead(nn.Module):
+    """Size regression head for predicting 3D nodule dimensions.
+
+    Predicts diameter values in three dimensions (x, y, z) for detected nodules.
+    Uses 1x1x1 convolution to transform feature maps to 3-channel size predictions.
+    Designed for smooth L1 loss training.
+
+    Args:
+        in_channels (int): Number of input feature channels
+        use_global_pool (bool): If True, applies global average pooling to convert
+                                spatial feature maps to single size prediction per sample.
+                                Default: True for standard size regression.
+
+    Attributes:
+        conv (nn.Conv3d): 1x1x1 convolution layer for size prediction
+        pool (nn.AdaptiveAvgPool3d | None): Optional global pooling layer
+    """
+
+    def __init__(self, in_channels: int, use_global_pool: bool = True) -> None:
+        """Initialize size regression head.
+
+        Args:
+            in_channels: Number of input feature channels
+            use_global_pool: Whether to use global average pooling
+        """
+        super().__init__()
+
+        # 1x1x1 conv: in_channels -> 3 (diameter_x, diameter_y, diameter_z)
+        self.conv = nn.Conv3d(in_channels, 3, kernel_size=1)
+
+        # Optional global pooling for spatial-to-vector prediction
+        self.pool = nn.AdaptiveAvgPool3d(1) if use_global_pool else None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass for size regression.
+
+        Args:
+            x: Input feature tensor of shape (B, C, D, H, W)
+
+        Returns:
+            Size predictions:
+            - (B, 3, 1, 1, 1) if use_global_pool=True
+            - (B, 3, D, H, W) if use_global_pool=False
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate size regression values
+        x = self.conv(x)
+
+        # Optionally apply global pooling
+        if self.pool is not None:
+            x = self.pool(x)
+
+        return x
+
+
+class MalignancyTriageHead(nn.Module):
+    """Malignancy triage head for predicting nodule urgency scores.
+
+    Predicts a 1-10 triage score indicating nodule malignancy likelihood and
+    clinical urgency. Uses 1x1x1 convolution with optional sigmoid activation.
+    Designed for weighted BCE loss training.
+
+    Args:
+        in_channels (int): Number of input feature channels
+        apply_sigmoid (bool): If True, applies sigmoid activation for inference.
+                              If False, outputs logits for training with loss.
+                              Default: False
+        use_global_pool (bool): If True, applies global average pooling to convert
+                                spatial feature maps to single triage score per sample.
+                                Default: True for standard triage prediction.
+
+    Attributes:
+        conv (nn.Conv3d): 1x1x1 convolution layer for triage score prediction
+        pool (nn.AdaptiveAvgPool3d | None): Optional global pooling layer
+        apply_sigmoid (bool): Whether to apply sigmoid activation
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        apply_sigmoid: bool = False,
+        use_global_pool: bool = True,
+    ) -> None:
+        """Initialize malignancy triage head.
+
+        Args:
+            in_channels: Number of input feature channels
+            apply_sigmoid: Whether to apply sigmoid activation
+            use_global_pool: Whether to use global average pooling
+        """
+        super().__init__()
+
+        # 1x1x1 conv: in_channels -> 1 (triage score)
+        self.conv = nn.Conv3d(
+            in_channels,
+            1,  # Single channel for triage score
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+        # Optional global pooling for spatial-to-scalar prediction
+        self.pool = nn.AdaptiveAvgPool3d(1) if use_global_pool else None
+
+        self.apply_sigmoid = apply_sigmoid
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass for triage score prediction.
+
+        Args:
+            x: Input feature tensor of shape (B, C, D, H, W)
+
+        Returns:
+            Triage score predictions:
+            - Logits if apply_sigmoid=False (for training with weighted BCE)
+            - Probabilities if apply_sigmoid=True (for inference)
+            Shape:
+            - (B, 1, 1, 1, 1) if use_global_pool=True
+            - (B, 1, D, H, W) if use_global_pool=False
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate triage score logits
+        x = self.conv(x)
+
+        # Optionally apply global pooling
+        if self.pool is not None:
+            x = self.pool(x)
+
+        # Optionally apply sigmoid for inference
+        if self.apply_sigmoid:
+            x = torch.sigmoid(x)
+
+        return x

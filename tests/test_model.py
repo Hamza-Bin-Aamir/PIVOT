@@ -7,9 +7,13 @@ import torch
 
 from src.model.unet import (
     BottleneckBlock,
+    CenterDetectionHead,
     DecoderBlock,
     DoubleConv3D,
     EncoderBlock,
+    MalignancyTriageHead,
+    SegmentationHead,
+    SizeRegressionHead,
     UNet3D,
 )
 
@@ -731,3 +735,925 @@ class TestUNet3DDecoder:
 
         assert not torch.isnan(output).any()
         assert not torch.isinf(output).any()
+
+
+class TestSegmentationHead:
+    """Tests for SegmentationHead."""
+
+    def test_segmentation_head_initialization(self):
+        """Test SegmentationHead initializes correctly."""
+        head = SegmentationHead(in_channels=32)
+
+        assert head.in_channels == 32
+        assert not head.apply_sigmoid
+        assert head.conv.in_channels == 32
+        assert head.conv.out_channels == 1
+        assert head.conv.kernel_size == (1, 1, 1)
+
+    def test_segmentation_head_with_sigmoid(self):
+        """Test SegmentationHead with sigmoid activation."""
+        head = SegmentationHead(in_channels=64, apply_sigmoid=True)
+
+        assert head.apply_sigmoid
+
+    def test_segmentation_head_forward_shape(self):
+        """Test segmentation head output shape."""
+        head = SegmentationHead(in_channels=32)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Output should have single channel (binary segmentation)
+        assert output.shape == (2, 1, 16, 16, 16)
+
+    def test_segmentation_head_preserves_spatial_dims(self):
+        """Test segmentation head preserves spatial dimensions."""
+        head = SegmentationHead(in_channels=64)
+
+        test_sizes = [(16, 16, 16), (32, 32, 32), (64, 64, 64), (8, 12, 16)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            assert output.shape[2:] == size
+
+    def test_segmentation_head_logits_output(self):
+        """Test segmentation head produces logits without sigmoid."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Logits can be any real value
+        assert output.shape == (2, 1, 16, 16, 16)
+        # Should have values outside [0, 1] range (logits)
+        assert (output < 0).any() or (output > 1).any()
+
+    def test_segmentation_head_sigmoid_output(self):
+        """Test segmentation head produces probabilities with sigmoid."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=True)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Probabilities should be in [0, 1]
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_segmentation_head_batch_sizes(self):
+        """Test segmentation head handles different batch sizes."""
+        head = SegmentationHead(in_channels=64)
+
+        for batch_size in [1, 2, 4, 8]:
+            x = torch.randn(batch_size, 64, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (batch_size, 1, 16, 16, 16)
+
+    def test_segmentation_head_different_channels(self):
+        """Test segmentation head with different input channels."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for in_ch in test_channels:
+            head = SegmentationHead(in_channels=in_ch)
+            x = torch.randn(1, in_ch, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (1, 1, 16, 16, 16)
+
+    def test_segmentation_head_gradients(self):
+        """Test gradients flow through segmentation head."""
+        head = SegmentationHead(in_channels=32)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_segmentation_head_gradients_with_sigmoid(self):
+        """Test gradients flow through segmentation head with sigmoid."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=True)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_segmentation_head_eval_mode(self):
+        """Test segmentation head in evaluation mode."""
+        head = SegmentationHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert not output.requires_grad
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_segmentation_head_wrong_dimensions(self):
+        """Test segmentation head raises error for wrong input dimensions."""
+        head = SegmentationHead(in_channels=32)
+
+        # 4D input (missing dimension)
+        x_4d = torch.randn(2, 32, 16, 16)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 6D input (extra dimension)
+        x_6d = torch.randn(2, 32, 16, 16, 16, 1)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_6d)
+
+    def test_segmentation_head_reproducibility(self):
+        """Test segmentation head produces consistent outputs."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(1, 32, 16, 16, 16)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        assert torch.allclose(output1, output2)
+
+    def test_segmentation_head_no_nan_output(self):
+        """Test segmentation head doesn't produce NaN outputs."""
+        head = SegmentationHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_segmentation_head_works_with_unet_output(self):
+        """Test segmentation head works with U-Net backbone output."""
+        # Create a small U-Net
+        unet = UNet3D(in_channels=1, out_channels=32, init_features=16, depth=2)
+        head = SegmentationHead(in_channels=32)
+
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        # Pass through U-Net
+        features = unet(x)
+        assert features.shape == (1, 32, 32, 32, 32)
+
+        # Pass through segmentation head
+        segmentation = head(features)
+        assert segmentation.shape == (1, 1, 32, 32, 32)
+
+    def test_segmentation_head_binary_output(self):
+        """Test segmentation head produces single channel output."""
+        head = SegmentationHead(in_channels=128)
+
+        x = torch.randn(4, 128, 8, 8, 8)
+        output = head(x)
+
+        # Binary segmentation: single channel
+        assert output.shape[1] == 1
+
+    def test_segmentation_head_integration_with_loss(self):
+        """Test segmentation head output compatible with BCE loss."""
+        head = SegmentationHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        target = torch.randint(0, 2, (2, 1, 16, 16, 16)).float()
+
+        output = head(x)
+
+        # Should work with BCE with logits loss
+        loss_fn = torch.nn.BCEWithLogitsLoss()
+        loss = loss_fn(output, target)
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+
+class TestCenterDetectionHead:
+    """Tests for CenterDetectionHead."""
+
+    def test_center_detection_head_initialization(self):
+        """Test CenterDetectionHead initializes correctly."""
+        head = CenterDetectionHead(in_channels=32)
+
+        assert head.in_channels == 32
+        assert not head.apply_sigmoid
+        assert head.conv.in_channels == 32
+        assert head.conv.out_channels == 1
+        assert head.conv.kernel_size == (1, 1, 1)
+
+    def test_center_detection_head_with_sigmoid(self):
+        """Test CenterDetectionHead with sigmoid activation."""
+        head = CenterDetectionHead(in_channels=64, apply_sigmoid=True)
+
+        assert head.apply_sigmoid
+
+    def test_center_detection_head_forward_shape(self):
+        """Test center detection head output shape."""
+        head = CenterDetectionHead(in_channels=32)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Output should have single channel (heatmap)
+        assert output.shape == (2, 1, 16, 16, 16)
+
+    def test_center_detection_head_preserves_spatial_dims(self):
+        """Test center detection head preserves spatial dimensions."""
+        head = CenterDetectionHead(in_channels=64)
+
+        test_sizes = [(16, 16, 16), (32, 32, 32), (64, 64, 64), (8, 12, 16)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            assert output.shape[2:] == size
+
+    def test_center_detection_head_logits_output(self):
+        """Test center detection head produces logits without sigmoid."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Logits can be any real value
+        assert output.shape == (2, 1, 16, 16, 16)
+        # Should have values outside [0, 1] range (logits)
+        assert (output < 0).any() or (output > 1).any()
+
+    def test_center_detection_head_sigmoid_output(self):
+        """Test center detection head produces probabilities with sigmoid."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        output = head(x)
+
+        # Probabilities should be in [0, 1]
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_center_detection_head_batch_sizes(self):
+        """Test center detection head handles different batch sizes."""
+        head = CenterDetectionHead(in_channels=64)
+
+        for batch_size in [1, 2, 4, 8]:
+            x = torch.randn(batch_size, 64, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (batch_size, 1, 16, 16, 16)
+
+    def test_center_detection_head_different_channels(self):
+        """Test center detection head with different input channels."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for in_ch in test_channels:
+            head = CenterDetectionHead(in_channels=in_ch)
+            x = torch.randn(1, in_ch, 16, 16, 16)
+            output = head(x)
+            assert output.shape == (1, 1, 16, 16, 16)
+
+    def test_center_detection_head_gradients(self):
+        """Test gradients flow through center detection head."""
+        head = CenterDetectionHead(in_channels=32)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_center_detection_head_gradients_with_sigmoid(self):
+        """Test gradients flow through center detection head with sigmoid."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+        x = torch.randn(1, 32, 16, 16, 16, requires_grad=True)
+
+        output = head(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+        assert not torch.isnan(x.grad).any()
+
+    def test_center_detection_head_eval_mode(self):
+        """Test center detection head in evaluation mode."""
+        head = CenterDetectionHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 1, 16, 16, 16)
+        assert not output.requires_grad
+        assert (output >= 0).all() and (output <= 1).all()
+
+    def test_center_detection_head_wrong_dimensions(self):
+        """Test center detection head raises error for wrong input dimensions."""
+        head = CenterDetectionHead(in_channels=32)
+
+        # 4D input (missing dimension)
+        x_4d = torch.randn(2, 32, 16, 16)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 6D input (extra dimension)
+        x_6d = torch.randn(2, 32, 16, 16, 16, 1)
+
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_6d)
+
+    def test_center_detection_head_reproducibility(self):
+        """Test center detection head produces consistent outputs."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(1, 32, 16, 16, 16)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        assert torch.allclose(output1, output2)
+
+    def test_center_detection_head_no_nan_output(self):
+        """Test center detection head doesn't produce NaN outputs."""
+        head = CenterDetectionHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 16, 16, 16)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_center_detection_head_works_with_unet_output(self):
+        """Test center detection head works with U-Net backbone output."""
+        # Create a small U-Net
+        unet = UNet3D(in_channels=1, out_channels=32, init_features=16, depth=2)
+        head = CenterDetectionHead(in_channels=32)
+
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        # Pass through U-Net
+        features = unet(x)
+        assert features.shape == (1, 32, 32, 32, 32)
+
+        # Pass through center detection head
+        heatmap = head(features)
+        assert heatmap.shape == (1, 1, 32, 32, 32)
+
+    def test_center_detection_head_single_channel_output(self):
+        """Test center detection head produces single channel heatmap."""
+        head = CenterDetectionHead(in_channels=128)
+
+        x = torch.randn(4, 128, 8, 8, 8)
+        output = head(x)
+
+        # Heatmap: single channel
+        assert output.shape[1] == 1
+
+    def test_center_detection_head_heatmap_range(self):
+        """Test center detection head heatmap values are in valid range."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        heatmap = head(x)
+
+        # With sigmoid, should be probabilities [0, 1]
+        assert heatmap.min() >= 0
+        assert heatmap.max() <= 1
+
+    def test_center_detection_head_peak_detection_ready(self):
+        """Test center detection head output suitable for peak detection."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(1, 32, 32, 32, 32)
+
+        with torch.no_grad():
+            heatmap = head(x)
+
+        # Heatmap should be smooth (no abrupt changes for peak detection)
+        assert heatmap.shape == (1, 1, 32, 32, 32)
+        # Values should be differentiable
+        assert not torch.isnan(heatmap).any()
+        # Should have valid probability range
+        assert (heatmap >= 0).all() and (heatmap <= 1).all()
+
+    def test_center_detection_head_integration_with_focal_loss(self):
+        """Test center detection head output compatible with focal loss."""
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=False)
+
+        x = torch.randn(2, 32, 16, 16, 16)
+        # Simulated heatmap target with sparse peaks
+        target = torch.zeros(2, 1, 16, 16, 16)
+        target[:, :, 8, 8, 8] = 1.0  # Center peak
+        target[:, :, 12, 10, 14] = 0.8  # Another peak
+
+        output = head(x)
+
+        # Should work with BCE with logits loss (proxy for focal)
+        loss_fn = torch.nn.BCEWithLogitsLoss()
+        loss = loss_fn(output, target)
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_center_detection_head_multi_scale_compatibility(self):
+        """Test center detection head works with various feature map sizes."""
+        head = CenterDetectionHead(in_channels=64)
+
+        # Different feature map sizes (from different network depths)
+        test_sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            # Should preserve spatial dimensions for dense prediction
+            assert output.shape[2:] == size
+
+
+class TestSizeRegressionHead:
+    """Test suite for SizeRegressionHead."""
+
+    def test_init_default(self):
+        """Test default initialization with global pooling."""
+        head = SizeRegressionHead(in_channels=64)
+
+        assert head.conv.in_channels == 64
+        assert head.conv.out_channels == 3  # x, y, z dimensions
+        assert head.conv.kernel_size == (1, 1, 1)
+        assert head.pool is not None
+
+    def test_init_no_pooling(self):
+        """Test initialization without global pooling."""
+        head = SizeRegressionHead(in_channels=32, use_global_pool=False)
+
+        assert head.conv.in_channels == 32
+        assert head.conv.out_channels == 3
+        assert head.pool is None
+
+    def test_forward_with_pooling(self):
+        """Test forward pass with global pooling."""
+        head = SizeRegressionHead(in_channels=64, use_global_pool=True)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Should produce (B, 3, 1, 1, 1) - single size prediction per sample
+        assert output.shape == (2, 3, 1, 1, 1)
+
+    def test_forward_without_pooling(self):
+        """Test forward pass without global pooling."""
+        head = SizeRegressionHead(in_channels=64, use_global_pool=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Should preserve spatial dimensions
+        assert output.shape == (2, 3, 8, 8, 8)
+
+    def test_different_input_channels(self):
+        """Test with various input channel counts."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for channels in test_channels:
+            head = SizeRegressionHead(in_channels=channels)
+            x = torch.randn(1, channels, 4, 4, 4)
+            output = head(x)
+
+            assert output.shape == (1, 3, 1, 1, 1)
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        head = SizeRegressionHead(in_channels=64)
+
+        batch_sizes = [1, 2, 4, 8]
+        for batch_size in batch_sizes:
+            x = torch.randn(batch_size, 64, 8, 8, 8)
+            output = head(x)
+
+            assert output.shape == (batch_size, 3, 1, 1, 1)
+
+    def test_different_spatial_sizes(self):
+        """Test with various spatial dimensions."""
+        head = SizeRegressionHead(in_channels=64)
+
+        test_sizes = [(4, 4, 4), (8, 8, 8), (16, 16, 16), (32, 32, 32)]
+
+        for size in test_sizes:
+            x = torch.randn(2, 64, *size)
+            output = head(x)
+
+            # Global pooling should always produce 1x1x1
+            assert output.shape == (2, 3, 1, 1, 1)
+
+    def test_wrong_input_dimensions(self):
+        """Test error handling for wrong input dimensions."""
+        head = SizeRegressionHead(in_channels=64)
+
+        # 4D input (missing channel or spatial dimension)
+        x_4d = torch.randn(2, 64, 8, 8)
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 3D input
+        x_3d = torch.randn(2, 64, 8)
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_3d)
+
+    def test_gradient_flow(self):
+        """Test gradient flow through size regression head."""
+        head = SizeRegressionHead(in_channels=64)
+
+        x = torch.randn(2, 64, 8, 8, 8, requires_grad=True)
+        output = head(x)
+
+        # Simulate smooth L1 loss
+        target = torch.randn_like(output)
+        loss = torch.nn.functional.smooth_l1_loss(output, target)
+        loss.backward()
+
+        # Check gradients exist
+        assert x.grad is not None
+        assert not torch.all(x.grad == 0)
+
+        # Check conv layer gradients
+        assert head.conv.weight.grad is not None
+        assert head.conv.bias.grad is not None
+
+    def test_eval_mode(self):
+        """Test size regression head in evaluation mode."""
+        head = SizeRegressionHead(in_channels=64)
+        head.eval()
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 3, 1, 1, 1)
+        # Check no gradients in eval mode
+        assert not output.requires_grad
+
+    def test_output_values_regression(self):
+        """Test that outputs are unbounded regression values."""
+        head = SizeRegressionHead(in_channels=64)
+
+        x = torch.randn(100, 64, 8, 8, 8)
+        output = head(x)
+
+        # Size predictions should be unbounded (not sigmoid-constrained)
+        # Can have negative values (before post-processing)
+        assert output.min() < 0 or output.max() > 1
+
+    def test_with_unet_backbone(self):
+        """Test size regression head with decoder-like features."""
+        # Simulate decoder output features (what task heads actually receive)
+        decoder_features = torch.randn(2, 16, 16, 16, 16)
+
+        head = SizeRegressionHead(in_channels=16)
+        size_predictions = head(decoder_features)
+
+        assert size_predictions.shape == (2, 3, 1, 1, 1)
+
+    def test_smooth_l1_loss_compatibility(self):
+        """Test compatibility with smooth L1 loss."""
+        head = SizeRegressionHead(in_channels=64)
+
+        x = torch.randn(4, 64, 8, 8, 8)
+        predictions = head(x)
+
+        # Target sizes (e.g., ground truth diameters)
+        target = torch.rand(4, 3, 1, 1, 1) * 20 + 5  # Sizes between 5-25
+
+        # Should work with smooth L1 loss
+        loss = torch.nn.functional.smooth_l1_loss(predictions, target)
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_spatial_size_preservation_no_pool(self):
+        """Test spatial dimensions preserved without pooling."""
+        head = SizeRegressionHead(in_channels=64, use_global_pool=False)
+
+        # Different feature map sizes
+        test_sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            # Should preserve spatial dimensions for dense prediction
+            assert output.shape[2:] == size
+
+    def test_deterministic_output(self):
+        """Test deterministic behavior in eval mode."""
+        head = SizeRegressionHead(in_channels=64)
+        head.eval()
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        # Same input should give same output
+        assert torch.allclose(output1, output2)
+
+    def test_three_channel_output(self):
+        """Test that output has exactly 3 channels for x, y, z."""
+        head = SizeRegressionHead(in_channels=64)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Channel dimension should be 3 (diameter_x, diameter_y, diameter_z)
+        assert output.shape[1] == 3
+
+    def test_zero_input(self):
+        """Test handling of zero input."""
+        head = SizeRegressionHead(in_channels=64)
+
+        x = torch.zeros(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 3, 1, 1, 1)
+        # Output should be close to bias values (since input is zero)
+        assert not torch.isnan(output).any()
+
+
+class TestMalignancyTriageHead:
+    """Test suite for MalignancyTriageHead."""
+
+    def test_init_default(self):
+        """Test default initialization with global pooling, no sigmoid."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        assert head.conv.in_channels == 64
+        assert head.conv.out_channels == 1  # Single triage score
+        assert head.conv.kernel_size == (1, 1, 1)
+        assert head.pool is not None
+        assert head.apply_sigmoid is False
+
+    def test_init_with_sigmoid(self):
+        """Test initialization with sigmoid activation."""
+        head = MalignancyTriageHead(in_channels=32, apply_sigmoid=True)
+
+        assert head.conv.in_channels == 32
+        assert head.apply_sigmoid is True
+
+    def test_init_no_pooling(self):
+        """Test initialization without global pooling."""
+        head = MalignancyTriageHead(in_channels=64, use_global_pool=False)
+
+        assert head.pool is None
+
+    def test_forward_logits(self):
+        """Test forward pass outputs logits when apply_sigmoid=False."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Logits are unbounded (no sigmoid applied)
+        # Just verify it's a valid tensor without NaN/Inf
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_forward_probabilities(self):
+        """Test forward pass outputs probabilities when apply_sigmoid=True."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Probabilities should be in [0, 1]
+        assert output.min() >= 0
+        assert output.max() <= 1
+
+    def test_forward_without_pooling(self):
+        """Test forward pass without global pooling."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False, use_global_pool=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Should preserve spatial dimensions
+        assert output.shape == (2, 1, 8, 8, 8)
+
+    def test_different_input_channels(self):
+        """Test with various input channel counts."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for channels in test_channels:
+            head = MalignancyTriageHead(in_channels=channels)
+            x = torch.randn(1, channels, 4, 4, 4)
+            output = head(x)
+
+            assert output.shape == (1, 1, 1, 1, 1)
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        batch_sizes = [1, 2, 4, 8, 16]
+        for batch_size in batch_sizes:
+            x = torch.randn(batch_size, 64, 8, 8, 8)
+            output = head(x)
+
+            assert output.shape == (batch_size, 1, 1, 1, 1)
+
+    def test_different_spatial_sizes(self):
+        """Test with various spatial dimensions."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        test_sizes = [(4, 4, 4), (8, 8, 8), (16, 16, 16), (32, 32, 32)]
+
+        for size in test_sizes:
+            x = torch.randn(2, 64, *size)
+            output = head(x)
+
+            # Global pooling should always produce 1x1x1
+            assert output.shape == (2, 1, 1, 1, 1)
+
+    def test_wrong_input_dimensions(self):
+        """Test error handling for wrong input dimensions."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        # 4D input (missing dimension)
+        x_4d = torch.randn(2, 64, 8, 8)
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 3D input
+        x_3d = torch.randn(2, 64, 8)
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_3d)
+
+    def test_gradient_flow(self):
+        """Test gradient flow through triage head."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(2, 64, 8, 8, 8, requires_grad=True)
+        output = head(x)
+
+        # Simulate weighted BCE loss
+        target = torch.ones_like(output)
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(output, target)
+        loss.backward()
+
+        # Check gradients exist
+        assert x.grad is not None
+        assert not torch.all(x.grad == 0)
+
+        # Check conv layer gradients
+        assert head.conv.weight.grad is not None
+        assert head.conv.bias.grad is not None
+
+    def test_eval_mode(self):
+        """Test triage head in evaluation mode."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Check no gradients in eval mode
+        assert not output.requires_grad
+        # Check sigmoid constraint
+        assert output.min() >= 0
+        assert output.max() <= 1
+
+    def test_sigmoid_mode_switching(self):
+        """Test switching between sigmoid and logits mode."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        # Logits mode
+        logits = head(x)
+
+        # Switch to sigmoid mode
+        head.apply_sigmoid = True
+        probs = head(x)
+
+        # Probabilities should be sigmoid of logits
+        expected = torch.sigmoid(logits)
+        assert torch.allclose(probs, expected, atol=1e-6)
+
+    def test_with_decoder_features(self):
+        """Test triage head with decoder-like features."""
+        # Simulate decoder output features
+        decoder_features = torch.randn(2, 16, 16, 16, 16)
+
+        head = MalignancyTriageHead(in_channels=16)
+        triage_scores = head(decoder_features)
+
+        assert triage_scores.shape == (2, 1, 1, 1, 1)
+
+    def test_weighted_bce_loss_compatibility(self):
+        """Test compatibility with weighted BCE loss."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(4, 64, 8, 8, 8)
+        predictions = head(x)
+
+        # Target triage scores (normalized to [0, 1])
+        target = torch.rand(4, 1, 1, 1, 1)
+
+        # Should work with weighted BCE loss
+        pos_weight = torch.tensor([2.0])  # Example weight for positive class
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            predictions, target, pos_weight=pos_weight
+        )
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_spatial_preservation_no_pool(self):
+        """Test spatial dimensions preserved without pooling."""
+        head = MalignancyTriageHead(in_channels=64, use_global_pool=False)
+
+        # Different feature map sizes
+        test_sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            # Should preserve spatial dimensions
+            assert output.shape[2:] == size
+
+    def test_deterministic_output(self):
+        """Test deterministic behavior in eval mode."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        # Same input should give same output
+        assert torch.allclose(output1, output2)
+
+    def test_single_channel_output(self):
+        """Test that output has exactly 1 channel for triage score."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Channel dimension should be 1 (single triage score)
+        assert output.shape[1] == 1
+
+    def test_zero_input(self):
+        """Test handling of zero input."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        x = torch.zeros(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Output should be close to bias values (since input is zero)
+        assert not torch.isnan(output).any()
+
+    def test_triage_score_range(self):
+        """Test triage scores can be mapped to 1-10 scale."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(10, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output = head(x)
+
+        # Sigmoid output in [0, 1] can be scaled to [1, 10]
+        # scaled_score = output * 9 + 1
+        scaled_scores = output * 9 + 1
+
+        assert scaled_scores.min() >= 1
+        assert scaled_scores.max() <= 10

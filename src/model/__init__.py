@@ -1,11 +1,25 @@
 """Model architectures and neural network components."""
 
-from .unet import BottleneckBlock, DecoderBlock, DoubleConv3D, EncoderBlock, UNet3D
+from .unet import (
+    BottleneckBlock,
+    CenterDetectionHead,
+    DecoderBlock,
+    DoubleConv3D,
+    EncoderBlock,
+    MalignancyTriageHead,
+    SegmentationHead,
+    SizeRegressionHead,
+    UNet3D,
+)
 
 __all__ = [
     "BottleneckBlock",
+    "CenterDetectionHead",
     "DecoderBlock",
     "DoubleConv3D",
     "EncoderBlock",
+    "MalignancyTriageHead",
+    "SegmentationHead",
+    "SizeRegressionHead",
     "UNet3D",
 ]
