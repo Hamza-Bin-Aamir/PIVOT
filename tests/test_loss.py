@@ -9,6 +9,7 @@ from src.loss.bce import BCELoss
 from src.loss.dice import DiceLoss
 from src.loss.focal import FocalLoss
 from src.loss.smooth_l1 import SmoothL1Loss
+from src.loss.weighted_bce import WeightedBCELoss
 
 
 class TestDiceLoss:
@@ -1466,3 +1467,363 @@ class TestSmoothL1Loss:
         # Smooth L1 should be much less than MSE due to linear scaling
         # MSE will be dominated by (100-1)^2 = 9801, while Smooth L1 is ~99
         assert loss_smooth < loss_mse / 10
+
+
+class TestWeightedBCELoss:
+    """Test suite for WeightedBCELoss."""
+
+    def test_init_default(self):
+        """Test default initialization."""
+        loss_fn = WeightedBCELoss()
+
+        assert loss_fn.pos_weight is None
+        assert loss_fn.neg_weight == 1.0
+        assert loss_fn.from_logits is True
+        assert loss_fn.reduction == "mean"
+
+    def test_init_with_pos_weight(self):
+        """Test initialization with positive weight."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0)
+
+        assert loss_fn.pos_weight == 3.0
+        assert loss_fn.neg_weight == 1.0
+
+    def test_init_with_both_weights(self):
+        """Test initialization with both weights."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, neg_weight=0.5)
+
+        assert loss_fn.pos_weight == 3.0
+        assert loss_fn.neg_weight == 0.5
+
+    def test_init_with_tensor_weights(self):
+        """Test initialization with tensor weights."""
+        pos_weight = torch.tensor([2.0, 3.0, 4.0])
+        neg_weight = torch.tensor([1.0, 1.0, 1.0])
+        loss_fn = WeightedBCELoss(pos_weight=pos_weight, neg_weight=neg_weight)
+
+        assert torch.equal(loss_fn.pos_weight, pos_weight)
+        assert torch.equal(loss_fn.neg_weight, neg_weight)
+
+    def test_init_custom_params(self):
+        """Test initialization with custom parameters."""
+        loss_fn = WeightedBCELoss(
+            pos_weight=2.0, neg_weight=1.0, from_logits=False, reduction="sum"
+        )
+
+        assert loss_fn.pos_weight == 2.0
+        assert loss_fn.from_logits is False
+        assert loss_fn.reduction == "sum"
+
+    def test_init_invalid_reduction(self):
+        """Test initialization with invalid reduction."""
+        with pytest.raises(ValueError, match="Invalid reduction"):
+            WeightedBCELoss(reduction="invalid")
+
+    def test_perfect_predictions(self):
+        """Test with perfect predictions."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=False)
+
+        # Perfect predictions
+        predictions = torch.ones(2, 1, 8, 8, 8)
+        targets = torch.ones(2, 1, 8, 8, 8)
+
+        loss = loss_fn(predictions, targets)
+
+        # Perfect match should give very low loss
+        assert loss < 0.01
+
+    def test_pos_weight_effect(self):
+        """Test that pos_weight increases loss for positive samples."""
+        loss_fn_no_weight = WeightedBCELoss(pos_weight=None, from_logits=True)
+        loss_fn_weighted = WeightedBCELoss(pos_weight=3.0, from_logits=True)
+
+        # All positive targets
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.ones(2, 1, 4, 4, 4)
+
+        loss_no_weight = loss_fn_no_weight(predictions, targets)
+        loss_weighted = loss_fn_weighted(predictions, targets)
+
+        # Weighted loss should be higher for positive samples
+        assert loss_weighted > loss_no_weight
+
+    def test_neg_weight_effect(self):
+        """Test that neg_weight increases loss for negative samples."""
+        loss_fn_default = WeightedBCELoss(pos_weight=None, neg_weight=1.0)
+        loss_fn_weighted = WeightedBCELoss(pos_weight=None, neg_weight=3.0)
+
+        # All negative targets
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.zeros(2, 1, 4, 4, 4)
+
+        loss_default = loss_fn_default(predictions, targets)
+        loss_weighted = loss_fn_weighted(predictions, targets)
+
+        # Weighted loss should be higher for negative samples
+        assert loss_weighted > loss_default
+
+    def test_balanced_weighting(self):
+        """Test with balanced pos/neg weights."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0, neg_weight=2.0)
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_with_logits(self):
+        """Test with logits."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=True)
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_with_probabilities(self):
+        """Test with probabilities."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=False)
+
+        predictions = torch.rand(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_reduction_none(self):
+        """Test reduction='none' returns per-element losses."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0, reduction="none")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        # Should return same shape as input
+        assert loss.shape == predictions.shape
+        assert (loss >= 0).all()
+
+    def test_reduction_sum(self):
+        """Test reduction='sum' returns sum of losses."""
+        loss_fn_sum = WeightedBCELoss(pos_weight=2.0, reduction="sum")
+        loss_fn_none = WeightedBCELoss(pos_weight=2.0, reduction="none")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss_sum = loss_fn_sum(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_sum = loss_none.sum()
+        assert torch.isclose(loss_sum, expected_sum, rtol=1e-4)
+
+    def test_reduction_mean(self):
+        """Test reduction='mean' returns mean of losses."""
+        loss_fn_mean = WeightedBCELoss(pos_weight=2.0, reduction="mean")
+        loss_fn_none = WeightedBCELoss(pos_weight=2.0, reduction="none")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss_mean = loss_fn_mean(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_mean = loss_none.mean()
+        assert torch.isclose(loss_mean, expected_mean, rtol=1e-4)
+
+    def test_shape_mismatch_error(self):
+        """Test error on shape mismatch."""
+        loss_fn = WeightedBCELoss()
+
+        predictions = torch.randn(2, 1, 8, 8, 8)
+        targets = torch.randn(2, 1, 4, 4, 4)  # Wrong shape
+
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            loss_fn(predictions, targets)
+
+    def test_gradient_flow(self):
+        """Test gradient flow through loss."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=True)
+
+        predictions = torch.randn(2, 1, 4, 4, 4, requires_grad=True)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        assert predictions.grad is not None
+        assert not torch.all(predictions.grad == 0)
+
+    def test_2d_images(self):
+        """Test with 2D images (B, C, H, W)."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0)
+
+        predictions = torch.randn(2, 1, 64, 64)
+        targets = torch.randint(0, 2, (2, 1, 64, 64)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_3d_volumes(self):
+        """Test with 3D volumes (B, C, D, H, W)."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0)
+
+        predictions = torch.randn(2, 1, 16, 16, 16)
+        targets = torch.randint(0, 2, (2, 1, 16, 16, 16)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_multi_channel(self):
+        """Test with multi-channel predictions."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0)
+
+        # 3 independent binary classifications
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = torch.randint(0, 2, (2, 3, 8, 8, 8)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss >= 0
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0)
+
+        batch_sizes = [1, 2, 4, 8]
+        for batch_size in batch_sizes:
+            predictions = torch.randn(batch_size, 1, 8, 8, 8)
+            targets = torch.randint(0, 2, (batch_size, 1, 8, 8, 8)).float()
+
+            loss = loss_fn(predictions, targets)
+            assert loss.ndim == 0  # Scalar with mean reduction
+
+    def test_numerical_stability_logits(self):
+        """Test numerical stability with extreme logits."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=True)
+
+        # Very large positive and negative logits
+        predictions = torch.randn(2, 1, 4, 4, 4) * 100
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert not torch.isnan(loss)
+
+    def test_deterministic_output(self):
+        """Test deterministic behavior."""
+        loss_fn = WeightedBCELoss(pos_weight=2.0)
+
+        predictions = torch.randn(2, 1, 8, 8, 8)
+        targets = torch.randint(0, 2, (2, 1, 8, 8, 8)).float()
+
+        loss1 = loss_fn(predictions, targets)
+        loss2 = loss_fn(predictions, targets)
+
+        assert torch.equal(loss1, loss2)
+
+    def test_integration_with_malignancy_triage_head(self):
+        """Test integration with malignancy triage head."""
+        from src.model.unet import MalignancyTriageHead
+
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=True)
+        head = MalignancyTriageHead(in_channels=32, apply_sigmoid=False)
+
+        features = torch.randn(2, 32, 16, 16, 16)
+        predictions = head(features)  # Logits (B, 1, 1, 1, 1) after pooling
+        targets = torch.randint(0, 2, (2, 1, 1, 1, 1)).float()  # Match pooled shape
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss >= 0
+        assert not torch.isnan(loss)
+
+    def test_backward_pass_with_model(self):
+        """Test backward pass through model and loss."""
+        from src.model.unet import MalignancyTriageHead
+
+        loss_fn = WeightedBCELoss(pos_weight=3.0, from_logits=True)
+        head = MalignancyTriageHead(in_channels=32, apply_sigmoid=False)
+
+        features = torch.randn(2, 32, 8, 8, 8, requires_grad=True)
+        predictions = head(features)
+        targets = torch.randint(0, 2, (2, 1, 1, 1, 1)).float()  # Match pooled shape
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        # Check gradients exist
+        assert features.grad is not None
+        for param in head.parameters():
+            assert param.grad is not None
+
+    def test_only_positive_samples(self):
+        """Test with only positive (malignant) samples."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, neg_weight=1.0)
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.ones(2, 1, 4, 4, 4)  # All malignant
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_only_negative_samples(self):
+        """Test with only negative (benign) samples."""
+        loss_fn = WeightedBCELoss(pos_weight=3.0, neg_weight=1.0)
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.zeros(2, 1, 4, 4, 4)  # All benign
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_imbalanced_dataset_simulation(self):
+        """Test with simulated imbalanced dataset (90% benign, 10% malignant)."""
+        loss_fn = WeightedBCELoss(pos_weight=9.0, neg_weight=1.0)
+
+        # Create imbalanced targets
+        targets = torch.zeros(2, 1, 10, 10, 10)
+        # Only 10% are malignant
+        targets[:, :, :1, :, :] = 1.0
+
+        predictions = torch.randn(2, 1, 10, 10, 10)
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_comparison_with_standard_bce(self):
+        """Test that WeightedBCELoss with no weights matches standard BCE."""
+        from src.loss.bce import BCELoss
+
+        weighted_loss_fn = WeightedBCELoss(
+            pos_weight=None, neg_weight=1.0, from_logits=True, reduction="mean"
+        )
+        bce_loss_fn = BCELoss(from_logits=True, reduction="mean")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss_weighted = weighted_loss_fn(predictions, targets)
+        loss_bce = bce_loss_fn(predictions, targets)
+
+        # Should be similar when no positive weighting is applied
+        assert torch.isclose(loss_weighted, loss_bce, rtol=1e-4)
