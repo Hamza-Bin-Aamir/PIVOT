@@ -495,3 +495,89 @@ class SizeRegressionHead(nn.Module):
             x = self.pool(x)
 
         return x
+
+
+class MalignancyTriageHead(nn.Module):
+    """Malignancy triage head for predicting nodule urgency scores.
+
+    Predicts a 1-10 triage score indicating nodule malignancy likelihood and
+    clinical urgency. Uses 1x1x1 convolution with optional sigmoid activation.
+    Designed for weighted BCE loss training.
+
+    Args:
+        in_channels (int): Number of input feature channels
+        apply_sigmoid (bool): If True, applies sigmoid activation for inference.
+                              If False, outputs logits for training with loss.
+                              Default: False
+        use_global_pool (bool): If True, applies global average pooling to convert
+                                spatial feature maps to single triage score per sample.
+                                Default: True for standard triage prediction.
+
+    Attributes:
+        conv (nn.Conv3d): 1x1x1 convolution layer for triage score prediction
+        pool (nn.AdaptiveAvgPool3d | None): Optional global pooling layer
+        apply_sigmoid (bool): Whether to apply sigmoid activation
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        apply_sigmoid: bool = False,
+        use_global_pool: bool = True,
+    ) -> None:
+        """Initialize malignancy triage head.
+
+        Args:
+            in_channels: Number of input feature channels
+            apply_sigmoid: Whether to apply sigmoid activation
+            use_global_pool: Whether to use global average pooling
+        """
+        super().__init__()
+
+        # 1x1x1 conv: in_channels -> 1 (triage score)
+        self.conv = nn.Conv3d(
+            in_channels,
+            1,  # Single channel for triage score
+            kernel_size=1,
+            stride=1,
+            padding=0,
+        )
+
+        # Optional global pooling for spatial-to-scalar prediction
+        self.pool = nn.AdaptiveAvgPool3d(1) if use_global_pool else None
+
+        self.apply_sigmoid = apply_sigmoid
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass for triage score prediction.
+
+        Args:
+            x: Input feature tensor of shape (B, C, D, H, W)
+
+        Returns:
+            Triage score predictions:
+            - Logits if apply_sigmoid=False (for training with weighted BCE)
+            - Probabilities if apply_sigmoid=True (for inference)
+            Shape:
+            - (B, 1, 1, 1, 1) if use_global_pool=True
+            - (B, 1, D, H, W) if use_global_pool=False
+
+        Raises:
+            ValueError: If input has wrong number of dimensions
+        """
+        if x.dim() != 5:
+            msg = f"Expected 5D input (B, C, D, H, W), got {x.dim()}D"
+            raise ValueError(msg)
+
+        # Generate triage score logits
+        x = self.conv(x)
+
+        # Optionally apply global pooling
+        if self.pool is not None:
+            x = self.pool(x)
+
+        # Optionally apply sigmoid for inference
+        if self.apply_sigmoid:
+            x = torch.sigmoid(x)
+
+        return x

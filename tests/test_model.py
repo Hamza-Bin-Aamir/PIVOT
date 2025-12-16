@@ -11,6 +11,7 @@ from src.model.unet import (
     DecoderBlock,
     DoubleConv3D,
     EncoderBlock,
+    MalignancyTriageHead,
     SegmentationHead,
     SizeRegressionHead,
     UNet3D,
@@ -1397,3 +1398,262 @@ class TestSizeRegressionHead:
         assert output.shape == (2, 3, 1, 1, 1)
         # Output should be close to bias values (since input is zero)
         assert not torch.isnan(output).any()
+
+
+class TestMalignancyTriageHead:
+    """Test suite for MalignancyTriageHead."""
+
+    def test_init_default(self):
+        """Test default initialization with global pooling, no sigmoid."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        assert head.conv.in_channels == 64
+        assert head.conv.out_channels == 1  # Single triage score
+        assert head.conv.kernel_size == (1, 1, 1)
+        assert head.pool is not None
+        assert head.apply_sigmoid is False
+
+    def test_init_with_sigmoid(self):
+        """Test initialization with sigmoid activation."""
+        head = MalignancyTriageHead(in_channels=32, apply_sigmoid=True)
+
+        assert head.conv.in_channels == 32
+        assert head.apply_sigmoid is True
+
+    def test_init_no_pooling(self):
+        """Test initialization without global pooling."""
+        head = MalignancyTriageHead(in_channels=64, use_global_pool=False)
+
+        assert head.pool is None
+
+    def test_forward_logits(self):
+        """Test forward pass outputs logits when apply_sigmoid=False."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Logits are unbounded (no sigmoid applied)
+        # Just verify it's a valid tensor without NaN/Inf
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_forward_probabilities(self):
+        """Test forward pass outputs probabilities when apply_sigmoid=True."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Probabilities should be in [0, 1]
+        assert output.min() >= 0
+        assert output.max() <= 1
+
+    def test_forward_without_pooling(self):
+        """Test forward pass without global pooling."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False, use_global_pool=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Should preserve spatial dimensions
+        assert output.shape == (2, 1, 8, 8, 8)
+
+    def test_different_input_channels(self):
+        """Test with various input channel counts."""
+        test_channels = [16, 32, 64, 128, 256]
+
+        for channels in test_channels:
+            head = MalignancyTriageHead(in_channels=channels)
+            x = torch.randn(1, channels, 4, 4, 4)
+            output = head(x)
+
+            assert output.shape == (1, 1, 1, 1, 1)
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        batch_sizes = [1, 2, 4, 8, 16]
+        for batch_size in batch_sizes:
+            x = torch.randn(batch_size, 64, 8, 8, 8)
+            output = head(x)
+
+            assert output.shape == (batch_size, 1, 1, 1, 1)
+
+    def test_different_spatial_sizes(self):
+        """Test with various spatial dimensions."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        test_sizes = [(4, 4, 4), (8, 8, 8), (16, 16, 16), (32, 32, 32)]
+
+        for size in test_sizes:
+            x = torch.randn(2, 64, *size)
+            output = head(x)
+
+            # Global pooling should always produce 1x1x1
+            assert output.shape == (2, 1, 1, 1, 1)
+
+    def test_wrong_input_dimensions(self):
+        """Test error handling for wrong input dimensions."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        # 4D input (missing dimension)
+        x_4d = torch.randn(2, 64, 8, 8)
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_4d)
+
+        # 3D input
+        x_3d = torch.randn(2, 64, 8)
+        with pytest.raises(ValueError, match="Expected 5D input"):
+            head(x_3d)
+
+    def test_gradient_flow(self):
+        """Test gradient flow through triage head."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(2, 64, 8, 8, 8, requires_grad=True)
+        output = head(x)
+
+        # Simulate weighted BCE loss
+        target = torch.ones_like(output)
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(output, target)
+        loss.backward()
+
+        # Check gradients exist
+        assert x.grad is not None
+        assert not torch.all(x.grad == 0)
+
+        # Check conv layer gradients
+        assert head.conv.weight.grad is not None
+        assert head.conv.bias.grad is not None
+
+    def test_eval_mode(self):
+        """Test triage head in evaluation mode."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Check no gradients in eval mode
+        assert not output.requires_grad
+        # Check sigmoid constraint
+        assert output.min() >= 0
+        assert output.max() <= 1
+
+    def test_sigmoid_mode_switching(self):
+        """Test switching between sigmoid and logits mode."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        # Logits mode
+        logits = head(x)
+
+        # Switch to sigmoid mode
+        head.apply_sigmoid = True
+        probs = head(x)
+
+        # Probabilities should be sigmoid of logits
+        expected = torch.sigmoid(logits)
+        assert torch.allclose(probs, expected, atol=1e-6)
+
+    def test_with_decoder_features(self):
+        """Test triage head with decoder-like features."""
+        # Simulate decoder output features
+        decoder_features = torch.randn(2, 16, 16, 16, 16)
+
+        head = MalignancyTriageHead(in_channels=16)
+        triage_scores = head(decoder_features)
+
+        assert triage_scores.shape == (2, 1, 1, 1, 1)
+
+    def test_weighted_bce_loss_compatibility(self):
+        """Test compatibility with weighted BCE loss."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=False)
+
+        x = torch.randn(4, 64, 8, 8, 8)
+        predictions = head(x)
+
+        # Target triage scores (normalized to [0, 1])
+        target = torch.rand(4, 1, 1, 1, 1)
+
+        # Should work with weighted BCE loss
+        pos_weight = torch.tensor([2.0])  # Example weight for positive class
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            predictions, target, pos_weight=pos_weight
+        )
+
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_spatial_preservation_no_pool(self):
+        """Test spatial dimensions preserved without pooling."""
+        head = MalignancyTriageHead(in_channels=64, use_global_pool=False)
+
+        # Different feature map sizes
+        test_sizes = [(8, 8, 8), (16, 16, 16), (32, 32, 32), (64, 64, 64)]
+
+        for size in test_sizes:
+            x = torch.randn(1, 64, *size)
+            output = head(x)
+            # Should preserve spatial dimensions
+            assert output.shape[2:] == size
+
+    def test_deterministic_output(self):
+        """Test deterministic behavior in eval mode."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(2, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output1 = head(x)
+            output2 = head(x)
+
+        # Same input should give same output
+        assert torch.allclose(output1, output2)
+
+    def test_single_channel_output(self):
+        """Test that output has exactly 1 channel for triage score."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        x = torch.randn(2, 64, 8, 8, 8)
+        output = head(x)
+
+        # Channel dimension should be 1 (single triage score)
+        assert output.shape[1] == 1
+
+    def test_zero_input(self):
+        """Test handling of zero input."""
+        head = MalignancyTriageHead(in_channels=64)
+
+        x = torch.zeros(2, 64, 8, 8, 8)
+        output = head(x)
+
+        assert output.shape == (2, 1, 1, 1, 1)
+        # Output should be close to bias values (since input is zero)
+        assert not torch.isnan(output).any()
+
+    def test_triage_score_range(self):
+        """Test triage scores can be mapped to 1-10 scale."""
+        head = MalignancyTriageHead(in_channels=64, apply_sigmoid=True)
+        head.eval()
+
+        x = torch.randn(10, 64, 8, 8, 8)
+
+        with torch.no_grad():
+            output = head(x)
+
+        # Sigmoid output in [0, 1] can be scaled to [1, 10]
+        # scaled_score = output * 9 + 1
+        scaled_scores = output * 9 + 1
+
+        assert scaled_scores.min() >= 1
+        assert scaled_scores.max() <= 10
