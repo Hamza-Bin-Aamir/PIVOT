@@ -7,6 +7,7 @@ import torch
 
 from src.loss.bce import BCELoss
 from src.loss.dice import DiceLoss
+from src.loss.focal import FocalLoss
 
 
 class TestDiceLoss:
@@ -658,3 +659,456 @@ class TestBCELoss:
 
         # Should match PyTorch implementation
         assert torch.isclose(loss_ours, loss_pytorch, rtol=1e-5)
+
+
+class TestFocalLoss:
+    """Test suite for FocalLoss."""
+
+    def test_init_default(self):
+        """Test default initialization."""
+        loss_fn = FocalLoss()
+
+        assert loss_fn.alpha == 0.25
+        assert loss_fn.gamma == 2.0
+        assert loss_fn.from_logits is True
+        assert loss_fn.reduction == "mean"
+
+    def test_init_custom_params(self):
+        """Test initialization with custom parameters."""
+        loss_fn = FocalLoss(alpha=0.5, gamma=3.0, from_logits=False, reduction="sum")
+
+        assert loss_fn.alpha == 0.5
+        assert loss_fn.gamma == 3.0
+        assert loss_fn.from_logits is False
+        assert loss_fn.reduction == "sum"
+
+    def test_init_with_tensor_alpha(self):
+        """Test initialization with tensor alpha."""
+        alpha = torch.tensor([0.25, 0.5, 0.25])
+        loss_fn = FocalLoss(alpha=alpha, gamma=2.0)
+
+        assert torch.equal(loss_fn.alpha, alpha)
+        assert loss_fn.gamma == 2.0
+
+    def test_init_invalid_reduction(self):
+        """Test initialization with invalid reduction."""
+        with pytest.raises(ValueError, match="Invalid reduction"):
+            FocalLoss(reduction="invalid")
+
+    def test_init_invalid_gamma(self):
+        """Test initialization with invalid gamma."""
+        with pytest.raises(ValueError, match="gamma must be >= 0"):
+            FocalLoss(gamma=-1.0)
+
+    def test_init_invalid_alpha(self):
+        """Test initialization with invalid alpha."""
+        with pytest.raises(ValueError, match="alpha must be in"):
+            FocalLoss(alpha=1.5)
+
+    def test_binary_perfect_predictions(self):
+        """Test with perfect binary predictions."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+
+        # Perfect predictions (probability = target)
+        predictions = torch.ones(2, 1, 8, 8, 8)
+        targets = torch.ones(2, 1, 8, 8, 8)
+
+        loss = loss_fn(predictions, targets)
+
+        # Perfect match should give very low loss
+        assert loss < 0.01
+
+    def test_binary_with_logits(self):
+        """Test binary focal loss with logits."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_binary_gamma_effect(self):
+        """Test that gamma affects loss magnitude."""
+        loss_fn_gamma0 = FocalLoss(alpha=0.25, gamma=0.0, from_logits=False)
+        loss_fn_gamma2 = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+
+        # Use somewhat confident but not perfect predictions
+        predictions = torch.ones(2, 1, 4, 4, 4) * 0.8
+        targets = torch.ones(2, 1, 4, 4, 4)
+
+        loss_gamma0 = loss_fn_gamma0(predictions, targets)
+        loss_gamma2 = loss_fn_gamma2(predictions, targets)
+
+        # Higher gamma should reduce loss for easy examples
+        assert loss_gamma2 < loss_gamma0
+
+    def test_binary_alpha_effect(self):
+        """Test that alpha affects loss magnitude."""
+        loss_fn_alpha025 = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+        loss_fn_alpha075 = FocalLoss(alpha=0.75, gamma=2.0, from_logits=False)
+
+        predictions = torch.rand(2, 1, 4, 4, 4)
+        targets = torch.ones(2, 1, 4, 4, 4)  # All positive
+
+        loss_alpha025 = loss_fn_alpha025(predictions, targets)
+        loss_alpha075 = loss_fn_alpha075(predictions, targets)
+
+        # Different alpha should give different loss
+        assert not torch.isclose(loss_alpha025, loss_alpha075)
+
+    def test_multiclass_with_logits(self):
+        """Test multi-class focal loss with logits."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = torch.randint(0, 3, (2, 8, 8, 8)).long()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_multiclass_with_probabilities(self):
+        """Test multi-class focal loss with probabilities."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+
+        # Create valid probability distribution
+        logits = torch.randn(2, 3, 8, 8, 8)
+        predictions = torch.softmax(logits, dim=1)
+        targets = torch.randint(0, 3, (2, 8, 8, 8)).long()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_multiclass_tensor_alpha(self):
+        """Test multi-class with tensor alpha (per-class weights)."""
+        alpha = torch.tensor([0.25, 0.5, 0.25])
+        loss_fn = FocalLoss(alpha=alpha, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randint(0, 3, (2, 4, 4, 4)).long()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_reduction_none_binary(self):
+        """Test reduction='none' for binary classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, reduction="none")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        # Should return same shape as input
+        assert loss.shape == predictions.shape
+        assert (loss >= 0).all()
+
+    def test_reduction_none_multiclass(self):
+        """Test reduction='none' for multi-class classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, reduction="none")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randint(0, 3, (2, 4, 4, 4)).long()
+
+        loss = loss_fn(predictions, targets)
+
+        # Should return shape (B, *) without class dimension
+        expected_shape = (2, 4, 4, 4)
+        assert loss.shape == expected_shape
+        assert (loss >= 0).all()
+
+    def test_reduction_sum_binary(self):
+        """Test reduction='sum' for binary classification."""
+        loss_fn_sum = FocalLoss(alpha=0.25, gamma=2.0, reduction="sum")
+        loss_fn_none = FocalLoss(alpha=0.25, gamma=2.0, reduction="none")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss_sum = loss_fn_sum(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_sum = loss_none.sum()
+        assert torch.isclose(loss_sum, expected_sum, rtol=1e-4)
+
+    def test_reduction_mean_binary(self):
+        """Test reduction='mean' for binary classification."""
+        loss_fn_mean = FocalLoss(alpha=0.25, gamma=2.0, reduction="mean")
+        loss_fn_none = FocalLoss(alpha=0.25, gamma=2.0, reduction="none")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss_mean = loss_fn_mean(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_mean = loss_none.mean()
+        assert torch.isclose(loss_mean, expected_mean, rtol=1e-4)
+
+    def test_shape_mismatch_binary(self):
+        """Test error on shape mismatch for binary."""
+        loss_fn = FocalLoss()
+
+        predictions = torch.randn(2, 1, 8, 8, 8)
+        targets = torch.randn(2, 1, 4, 4, 4)  # Wrong shape
+
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            loss_fn(predictions, targets)
+
+    def test_gradient_flow_binary(self):
+        """Test gradient flow for binary classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 1, 4, 4, 4, requires_grad=True)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        assert predictions.grad is not None
+        assert not torch.all(predictions.grad == 0)
+
+    def test_gradient_flow_multiclass(self):
+        """Test gradient flow for multi-class classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 3, 4, 4, 4, requires_grad=True)
+        targets = torch.randint(0, 3, (2, 4, 4, 4)).long()
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        assert predictions.grad is not None
+        assert not torch.all(predictions.grad == 0)
+
+    def test_2d_images_binary(self):
+        """Test with 2D images for binary classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+
+        predictions = torch.rand(2, 1, 64, 64)
+        targets = torch.randint(0, 2, (2, 1, 64, 64)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_3d_volumes_binary(self):
+        """Test with 3D volumes for binary classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+
+        predictions = torch.rand(2, 1, 16, 16, 16)
+        targets = torch.randint(0, 2, (2, 1, 16, 16, 16)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_3d_volumes_multiclass(self):
+        """Test with 3D volumes for multi-class classification."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 4, 16, 16, 16)
+        targets = torch.randint(0, 4, (2, 16, 16, 16)).long()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss.ndim == 0  # Scalar
+        assert loss >= 0
+
+    def test_different_batch_sizes(self):
+        """Test with various batch sizes."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        batch_sizes = [1, 2, 4, 8]
+        for batch_size in batch_sizes:
+            predictions = torch.randn(batch_size, 1, 8, 8, 8)
+            targets = torch.randint(0, 2, (batch_size, 1, 8, 8, 8)).float()
+
+            loss = loss_fn(predictions, targets)
+            assert loss.ndim == 0  # Scalar with mean reduction
+
+    def test_numerical_stability_binary_logits(self):
+        """Test numerical stability with extreme logits for binary."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        # Very large positive and negative logits
+        predictions = torch.randn(2, 1, 4, 4, 4) * 100
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert not torch.isnan(loss)
+
+    def test_numerical_stability_binary_probabilities(self):
+        """Test numerical stability with edge probabilities for binary."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=False)
+
+        # Probabilities very close to 0 and 1
+        predictions = torch.rand(2, 1, 4, 4, 4)
+        predictions[0] = 0.0001
+        predictions[1] = 0.9999
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert not torch.isnan(loss)
+
+    def test_numerical_stability_multiclass(self):
+        """Test numerical stability for multi-class."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        # Very large logits
+        predictions = torch.randn(2, 3, 4, 4, 4) * 100
+        targets = torch.randint(0, 3, (2, 4, 4, 4)).long()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert not torch.isnan(loss)
+
+    def test_gamma_zero_equivalence_to_ce(self):
+        """Test that gamma=0 is equivalent to standard cross-entropy."""
+        import torch.nn as nn
+
+        # Binary case
+        focal_loss = FocalLoss(alpha=0.5, gamma=0.0, from_logits=True)
+        bce_loss = nn.BCEWithLogitsLoss(reduction="mean")
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss_focal = focal_loss(predictions, targets)
+        loss_bce = bce_loss(predictions, targets)
+
+        # With gamma=0 and alpha=0.5, focal loss should be close to BCE
+        # (within alpha scaling factor of 0.5)
+        assert torch.isclose(loss_focal, loss_bce * 0.5, rtol=1e-3)
+
+    def test_deterministic_output_binary(self):
+        """Test deterministic behavior for binary."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 1, 8, 8, 8)
+        targets = torch.randint(0, 2, (2, 1, 8, 8, 8)).float()
+
+        loss1 = loss_fn(predictions, targets)
+        loss2 = loss_fn(predictions, targets)
+
+        assert torch.equal(loss1, loss2)
+
+    def test_deterministic_output_multiclass(self):
+        """Test deterministic behavior for multi-class."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 3, 8, 8, 8)
+        targets = torch.randint(0, 3, (2, 8, 8, 8)).long()
+
+        loss1 = loss_fn(predictions, targets)
+        loss2 = loss_fn(predictions, targets)
+
+        assert torch.equal(loss1, loss2)
+
+    def test_integration_with_center_detection_head(self):
+        """Test integration with center detection head."""
+        from src.model.unet import CenterDetectionHead
+
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=False)
+
+        features = torch.randn(2, 32, 16, 16, 16)
+        predictions = head(features)  # Logits
+        targets = torch.randint(0, 2, (2, 1, 16, 16, 16)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert loss >= 0
+        assert not torch.isnan(loss)
+
+    def test_backward_pass_with_model(self):
+        """Test backward pass through model and loss."""
+        from src.model.unet import CenterDetectionHead
+
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+        head = CenterDetectionHead(in_channels=32, apply_sigmoid=False)
+
+        features = torch.randn(2, 32, 8, 8, 8, requires_grad=True)
+        predictions = head(features)
+        targets = torch.randint(0, 2, (2, 1, 8, 8, 8)).float()
+
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+
+        # Check gradients exist
+        assert features.grad is not None
+        for param in head.parameters():
+            assert param.grad is not None
+
+    def test_high_gamma_focuses_on_hard_examples(self):
+        """Test that high gamma focuses on hard examples."""
+        loss_fn = FocalLoss(alpha=0.5, gamma=5.0, from_logits=False)
+
+        # Easy example: high confidence correct prediction
+        easy_pred = torch.tensor([[[[0.99]]]])
+        easy_target = torch.tensor([[[[1.0]]]])
+
+        # Hard example: low confidence correct prediction
+        hard_pred = torch.tensor([[[[0.51]]]])
+        hard_target = torch.tensor([[[[1.0]]]])
+
+        loss_easy = loss_fn(easy_pred, easy_target)
+        loss_hard = loss_fn(hard_pred, hard_target)
+
+        # Hard example should have much higher loss due to high gamma
+        assert loss_hard > loss_easy * 10
+
+    def test_multiclass_different_num_classes(self):
+        """Test multi-class with different number of classes."""
+        loss_fn = FocalLoss(alpha=0.25, gamma=2.0, from_logits=True)
+
+        num_classes_list = [2, 3, 5, 10]
+        for num_classes in num_classes_list:
+            predictions = torch.randn(2, num_classes, 8, 8, 8)
+            targets = torch.randint(0, num_classes, (2, 8, 8, 8)).long()
+
+            loss = loss_fn(predictions, targets)
+            assert torch.isfinite(loss)
+            assert loss >= 0
+
+    def test_binary_with_tensor_alpha(self):
+        """Test binary classification with tensor alpha."""
+        alpha = torch.tensor([0.75])
+        loss_fn = FocalLoss(alpha=alpha, gamma=2.0, from_logits=True)
+
+        predictions = torch.randn(2, 1, 4, 4, 4)
+        targets = torch.randint(0, 2, (2, 1, 4, 4, 4)).float()
+
+        loss = loss_fn(predictions, targets)
+
+        assert torch.isfinite(loss)
+        assert loss >= 0
+
+    def test_reduction_sum_multiclass(self):
+        """Test reduction='sum' for multi-class classification."""
+        loss_fn_sum = FocalLoss(alpha=0.25, gamma=2.0, reduction="sum")
+        loss_fn_none = FocalLoss(alpha=0.25, gamma=2.0, reduction="none")
+
+        predictions = torch.randn(2, 3, 4, 4, 4)
+        targets = torch.randint(0, 3, (2, 4, 4, 4)).long()
+
+        loss_sum = loss_fn_sum(predictions, targets)
+        loss_none = loss_fn_none(predictions, targets)
+
+        expected_sum = loss_none.sum()
+        assert torch.isclose(loss_sum, expected_sum, rtol=1e-4)
