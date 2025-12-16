@@ -581,3 +581,123 @@ class MalignancyTriageHead(nn.Module):
             x = torch.sigmoid(x)
 
         return x
+
+
+class MultiTaskUNet3D(nn.Module):
+    """Multi-task 3D U-Net for simultaneous nodule analysis.
+
+    Integrates U-Net backbone with four task-specific prediction heads:
+    - Segmentation: Binary nodule masks
+    - Center detection: Gaussian heatmap peaks
+    - Size regression: 3D diameter predictions (x, y, z)
+    - Malignancy triage: 1-10 urgency scores
+
+    Args:
+        in_channels (int): Number of input channels (typically 1 for CT scans)
+        init_features (int): Number of features in first encoder layer
+        depth (int): Network depth (number of encoder/decoder stages)
+        enable_segmentation (bool): Enable segmentation head. Default: True
+        enable_center (bool): Enable center detection head. Default: True
+        enable_size (bool): Enable size regression head. Default: True
+        enable_triage (bool): Enable malignancy triage head. Default: True
+
+    Attributes:
+        backbone (UNet3D): Shared U-Net feature extractor
+        segmentation_head (SegmentationHead | None): Binary segmentation head
+        center_head (CenterDetectionHead | None): Center heatmap head
+        size_head (SizeRegressionHead | None): Size regression head
+        triage_head (MalignancyTriageHead | None): Triage score head
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 1,
+        init_features: int = 32,
+        depth: int = 4,
+        enable_segmentation: bool = True,
+        enable_center: bool = True,
+        enable_size: bool = True,
+        enable_triage: bool = True,
+    ) -> None:
+        """Initialize multi-task U-Net.
+
+        Args:
+            in_channels: Number of input channels
+            init_features: Initial feature channels
+            depth: Network depth
+            enable_segmentation: Enable segmentation head
+            enable_center: Enable center detection head
+            enable_size: Enable size regression head
+            enable_triage: Enable triage head
+        """
+        super().__init__()
+
+        # Shared U-Net backbone (outputs decoder features, not final segmentation)
+        self.backbone = UNet3D(
+            in_channels=in_channels,
+            out_channels=init_features,  # Decoder features for task heads
+            init_features=init_features,
+            depth=depth,
+        )
+
+        # Task-specific prediction heads (all consume decoder features)
+        self.segmentation_head = (
+            SegmentationHead(in_channels=init_features, apply_sigmoid=False)
+            if enable_segmentation
+            else None
+        )
+
+        self.center_head = (
+            CenterDetectionHead(in_channels=init_features, apply_sigmoid=False)
+            if enable_center
+            else None
+        )
+
+        self.size_head = (
+            SizeRegressionHead(in_channels=init_features, use_global_pool=True)
+            if enable_size
+            else None
+        )
+
+        self.triage_head = (
+            MalignancyTriageHead(
+                in_channels=init_features,
+                apply_sigmoid=False,
+                use_global_pool=True,
+            )
+            if enable_triage
+            else None
+        )
+
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Forward pass through multi-task model.
+
+        Args:
+            x: Input CT volume [B, in_channels, D, H, W]
+
+        Returns:
+            Dictionary containing predictions from enabled heads:
+            - 'segmentation': [B, 1, D, H, W] - binary mask logits (if enabled)
+            - 'center': [B, 1, D, H, W] - center heatmap logits (if enabled)
+            - 'size': [B, 3, 1, 1, 1] - diameter predictions (if enabled)
+            - 'triage': [B, 1, 1, 1, 1] - triage score logits (if enabled)
+        """
+        # Extract shared features from backbone
+        features = self.backbone(x)
+
+        # Generate predictions from each enabled head
+        outputs = {}
+
+        if self.segmentation_head is not None:
+            outputs["segmentation"] = self.segmentation_head(features)
+
+        if self.center_head is not None:
+            outputs["center"] = self.center_head(features)
+
+        if self.size_head is not None:
+            outputs["size"] = self.size_head(features)
+
+        if self.triage_head is not None:
+            outputs["triage"] = self.triage_head(features)
+
+        return outputs
