@@ -41,6 +41,21 @@ from .triage import (
     aggregate_lidc_characteristics,
     compute_triage_score,
 )
+from .validation import (
+    ValidationResult,
+    VolumeQualityMetrics,
+    check_zero_slices,
+    compute_quality_metrics,
+    summarize_validation_results,
+    validate_annotation_bounds,
+    validate_dataset_structure,
+    validate_file_exists,
+    validate_intensity_range,
+    validate_mask_consistency,
+    validate_sitk_image,
+    validate_spacing,
+    validate_volume_shape,
+)
 
 __all__ = [
     # Annotations
@@ -81,4 +96,18 @@ __all__ = [
     "is_isotropic",
     "resample_mask",
     "resample_to_isotropic",
+    # Validation
+    "ValidationResult",
+    "VolumeQualityMetrics",
+    "check_zero_slices",
+    "compute_quality_metrics",
+    "summarize_validation_results",
+    "validate_annotation_bounds",
+    "validate_dataset_structure",
+    "validate_file_exists",
+    "validate_intensity_range",
+    "validate_mask_consistency",
+    "validate_sitk_image",
+    "validate_spacing",
+    "validate_volume_shape",
 ]
