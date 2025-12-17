@@ -68,7 +68,7 @@ class TestDICOMLoader:
         ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 
         dicom_file = tmp_path / "test.dcm"
-        ds.save_as(str(dicom_file), write_like_original=False)
+        ds.save_as(str(dicom_file), enforce_file_format=True)
 
         assert DICOMLoader.is_dicom_file(dicom_file)
 
@@ -426,7 +426,7 @@ class TestIntegration:
         ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 
         dicom_file = tmp_path / "test.dcm"
-        ds.save_as(str(dicom_file), write_like_original=False)
+        ds.save_as(str(dicom_file), enforce_file_format=True)
 
         # Load the file
         array, metadata = DICOMLoader.load_dicom_file(dicom_file)
@@ -486,7 +486,7 @@ class TestIntegration:
         ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
 
         valid_file = series_dir / "valid.dcm"
-        ds.save_as(str(valid_file), write_like_original=False)
+        ds.save_as(str(valid_file), enforce_file_format=True)
 
         # Create a corrupted DICOM file (will be detected but fail to load details)
         corrupted = series_dir / "corrupted.dcm"

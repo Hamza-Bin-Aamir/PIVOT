@@ -1,3 +1,5 @@
 """Training pipeline and utilities."""
 
-__all__ = []
+from .module import LitNoduleDetection
+
+__all__ = ["LitNoduleDetection"]

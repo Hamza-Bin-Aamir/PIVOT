@@ -422,14 +422,25 @@ def compute_quality_metrics(
     if direction is None:
         direction = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
 
-    # Basic statistics
-    intensity_range = (float(np.min(volume)), float(np.max(volume)))
-    intensity_mean = float(np.mean(volume))
-    intensity_std = float(np.std(volume))
-
     # Check for problematic values
     has_nan = bool(np.isnan(volume).any())
     has_inf = bool(np.isinf(volume).any())
+
+    # Basic statistics (ignore inf/nan to avoid runtime warnings)
+    finite_mask = np.isfinite(volume)
+    if finite_mask.any():
+        finite_values = volume[finite_mask]
+        with np.errstate(invalid="ignore"):
+            intensity_range = (
+                float(np.min(finite_values)),
+                float(np.max(finite_values)),
+            )
+            intensity_mean = float(np.mean(finite_values))
+            intensity_std = float(np.std(finite_values))
+    else:
+        intensity_range = (float("nan"), float("nan"))
+        intensity_mean = float("nan")
+        intensity_std = float("nan")
 
     # Count zero slices
     num_zero_slices, _ = check_zero_slices(volume, axis=0)

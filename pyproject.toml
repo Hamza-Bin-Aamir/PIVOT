@@ -59,6 +59,12 @@ markers = [
     "slow: Tests that take > 30 seconds",
     "gpu: Tests requiring GPU hardware",
 ]
+filterwarnings = [
+    "default",
+    "ignore:.*SwigPy.*__module__ attribute:DeprecationWarning",
+    "ignore:.*swigvarlink.*__module__ attribute:DeprecationWarning",
+    "ignore:'write_like_original' is deprecated and will be removed in v4.0, please use 'enforce_file_format' instead:DeprecationWarning:pydicom.filewriter",
+]
 
 [project]
 name = "pivot"

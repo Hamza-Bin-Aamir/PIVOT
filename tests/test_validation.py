@@ -449,6 +449,18 @@ class TestQualityMetrics:
         expected_size_mb = (64 * 64 * 64 * 4) / (1024 * 1024)
         assert abs(metrics.estimated_file_size_mb - expected_size_mb) < 0.1
 
+    def test_compute_quality_metrics_all_inf(self):
+        """Test quality metrics when volume has no finite values."""
+        volume = np.full((8, 8, 8), np.inf, dtype=np.float32)
+
+        metrics = compute_quality_metrics(volume)
+
+        assert metrics.has_inf is True
+        assert np.isnan(metrics.intensity_mean)
+        assert np.isnan(metrics.intensity_std)
+        assert np.isnan(metrics.intensity_range[0])
+        assert np.isnan(metrics.intensity_range[1])
+
 
 class TestSITKImageValidation:
     """Tests for SimpleITK image validation."""
