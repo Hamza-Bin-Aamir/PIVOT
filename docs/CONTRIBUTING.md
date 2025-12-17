@@ -161,6 +161,79 @@ make format    # Format code with ruff
 make lint      # Run linters
 ```
 
+## Testing Requirements
+
+### Code Coverage
+
+**All new code must have 100% test coverage.** This is a strict requirement, regardless of whether the tests seem "obvious" or "trivial."
+
+#### Why 100% Coverage?
+
+- **Catch regressions**: Even simple code can break unexpectedly
+- **Document behavior**: Tests serve as executable documentation
+- **Enable refactoring**: High coverage allows safe code improvements
+- **Maintain quality**: Ensures every code path is validated
+
+#### Running Tests with Coverage
+
+```bash
+# Run all tests with coverage report
+uv run pytest --cov=src --cov-report=term-missing
+
+# Run specific module with coverage
+uv run pytest tests/test_module.py --cov=src/module --cov-report=term-missing
+
+# Fail if coverage is below 100%
+uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=100
+```
+
+#### Coverage Guidelines
+
+- **100% line coverage required**: Every statement must be executed by tests
+- **100% branch coverage required**: Every conditional path must be tested
+- **No exceptions**: Even "simple" getters, setters, and property methods need tests
+- **Integration hooks**: Methods like `on_train_epoch_end` that require framework setup should be tested or explicitly documented why they can't be
+
+#### Example: Complete Test Coverage
+
+```python
+# src/module.py
+class MyClass:
+    def __init__(self, value: int):
+        self.value = value
+
+    def get_value(self) -> int:
+        return self.value
+
+    def is_positive(self) -> bool:
+        if self.value > 0:
+            return True
+        return False
+
+# tests/test_module.py
+def test_init():
+    obj = MyClass(42)
+    assert obj.value == 42
+
+def test_get_value():
+    obj = MyClass(42)
+    assert obj.get_value() == 42
+
+def test_is_positive_true():
+    obj = MyClass(10)
+    assert obj.is_positive() is True
+
+def test_is_positive_false():
+    obj = MyClass(-5)
+    assert obj.is_positive() is False
+
+def test_is_positive_zero():
+    obj = MyClass(0)
+    assert obj.is_positive() is False
+```
+
+All branches covered: initialization, getter, and all three conditional paths (positive, negative, zero).
+
 ## Cross-Platform Workflow
 
 PIVOT runs the same way on Linux, macOS, and Windows. Follow the guidance below
