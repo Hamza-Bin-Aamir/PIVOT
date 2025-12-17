@@ -3,7 +3,7 @@
 import argparse
 
 
-def main():
+def main() -> None:
     """Main inference entry point."""
     parser = argparse.ArgumentParser(description="Run PIVOT inference")
     parser.add_argument("--input", type=str, required=True, help="Input CT scan path")

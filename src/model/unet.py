@@ -18,7 +18,7 @@ class DoubleConv3D(nn.Module):
         out_channels: int,
         kernel_size: int = 3,
         padding: int = 1,
-    ):
+    ) -> None:
         """Initialize double convolution block.
 
         Args:
@@ -59,7 +59,7 @@ class DoubleConv3D(nn.Module):
         Returns:
             Output tensor [B, C_out, D, H, W]
         """
-        return self.double_conv(x)
+        return self.double_conv(x)  # type: ignore[no-any-return]
 
 
 class EncoderBlock(nn.Module):
@@ -75,7 +75,7 @@ class EncoderBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         pool_size: int = 2,
-    ):
+    ) -> None:
         """Initialize encoder block.
 
         Args:
@@ -118,7 +118,7 @@ class DecoderBlock(nn.Module):
         in_channels: int,
         out_channels: int,
         upsample_size: int = 2,
-    ):
+    ) -> None:
         """Initialize decoder block.
 
         Args:
@@ -184,7 +184,7 @@ class BottleneckBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-    ):
+    ) -> None:
         """Initialize bottleneck block.
 
         Args:
@@ -203,7 +203,7 @@ class BottleneckBlock(nn.Module):
         Returns:
             Output tensor [B, out_channels, D, H, W]
         """
-        return self.conv(x)
+        return self.conv(x)  # type: ignore[no-any-return]
 
 
 class UNet3D(nn.Module):
@@ -223,7 +223,7 @@ class UNet3D(nn.Module):
         out_channels: int = 1,
         init_features: int = 32,
         depth: int = 4,
-    ):
+    ) -> None:
         """Initialize 3D U-Net.
 
         Args:
@@ -319,7 +319,7 @@ class SegmentationHead(nn.Module):
         self,
         in_channels: int,
         apply_sigmoid: bool = False,
-    ):
+    ) -> None:
         """Initialize segmentation head.
 
         Args:
@@ -385,7 +385,7 @@ class CenterDetectionHead(nn.Module):
         self,
         in_channels: int,
         apply_sigmoid: bool = False,
-    ):
+    ) -> None:
         """Initialize center detection head.
 
         Args:

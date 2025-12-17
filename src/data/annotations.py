@@ -214,7 +214,9 @@ def parse_lidc_annotations(
 
                 image_uid = (roi.findtext("imageUID") or roi.findtext("imageSOP_UID") or "").strip()
                 if not image_uid:
-                    image_uid = None
+                    image_uid_value: str | None = None
+                else:
+                    image_uid_value = image_uid
 
                 coords: list[tuple[float, float]] = []
                 for edge_map in roi.findall("edgeMap"):
@@ -236,7 +238,7 @@ def parse_lidc_annotations(
 
                 rois.append(
                     LIDCRoi(
-                        image_uid=image_uid,
+                        image_uid=image_uid_value,
                         z_position=z_position,
                         xy_coords=tuple(coords),
                     )

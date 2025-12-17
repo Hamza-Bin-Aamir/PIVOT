@@ -19,7 +19,7 @@ class ModelConfig:
     dropout: float = 0.0
     batch_norm: bool = True
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         if self.in_channels < 1:
             raise ValueError("in_channels must be >= 1")
@@ -45,7 +45,7 @@ class OptimizerConfig:
     momentum: float = 0.9  # For SGD
     nesterov: bool = False  # For SGD
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.lr <= 0:
             raise ValueError("lr must be > 0")
@@ -65,7 +65,7 @@ class SchedulerConfig:
     gamma: float = 0.1  # For StepLR/MultiStepLR
     milestones: list[int] = field(default_factory=lambda: [30, 60, 90])  # For MultiStepLR
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.min_lr <= 0:
             raise ValueError("min_lr must be > 0")
@@ -84,7 +84,7 @@ class LossConfig:
     focal_gamma: float = 2.0  # For focal loss
     reduction: str = "mean"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.smooth < 0:
             raise ValueError("smooth must be >= 0")
@@ -104,7 +104,7 @@ class DataConfig:
     drop_last: bool = True
     cache_rate: float = 0.0  # MONAI cache rate (0=no cache, 1=full cache)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.batch_size < 1:
             raise ValueError("batch_size must be >= 1")
@@ -125,7 +125,7 @@ class PreprocessingConfig:
     normalize: bool = True
     clip_values: tuple[float, float] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if len(self.target_spacing) != 3:
             raise ValueError("target_spacing must have 3 values")
@@ -147,7 +147,7 @@ class AugmentationConfig:
     gaussian_noise_prob: float = 0.0
     gaussian_smooth_prob: float = 0.0
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         probs = [
             self.random_flip_prob,
@@ -176,7 +176,7 @@ class CheckpointConfig:
     save_last: bool = True
     max_checkpoints: int | None = 5
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.save_every < 1:
             raise ValueError("save_every must be >= 1")
@@ -196,7 +196,7 @@ class LoggingConfig:
     console_log_level: str = "INFO"
     file_log_level: str = "DEBUG"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if self.console_log_level not in valid_levels:
@@ -217,7 +217,7 @@ class WandBConfig:
     notes: str = ""
     resume: str = "auto"  # 'auto', 'allow', 'never', 'must'
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.resume not in ["auto", "allow", "never", "must"]:
             raise ValueError("resume must be 'auto', 'allow', 'never', or 'must'")
@@ -233,7 +233,7 @@ class ValidationConfig:
     save_predictions: bool = False
     prediction_save_dir: str = "predictions"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if self.val_every < 1:
             raise ValueError("val_every must be >= 1")
@@ -250,7 +250,7 @@ class InferenceConfig:
     save_probabilities: bool = False
     tta: bool = False  # Test-time augmentation
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         if not 0 <= self.overlap < 1:
             raise ValueError("overlap must be in [0, 1)")
@@ -269,7 +269,7 @@ class HardwareConfig:
     deterministic: bool = False
     seed: int | None = 42
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration."""
         valid_devices = ["cuda", "rocm", "xpu", "cpu"]
         if self.device not in valid_devices:
@@ -280,7 +280,7 @@ class ConfigLoader:
     """Utility class for loading and merging configurations."""
 
     @staticmethod
-    def _to_serializable(value: Any) -> Any:
+    def _to_serializable(value: Any) -> Any:  # type: ignore[misc]  # noqa: ANN401
         """Convert configuration data to YAML-safe types."""
 
         if isinstance(value, dict):

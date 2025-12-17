@@ -9,6 +9,7 @@ train:
   epochs: 100
   gradient_clip: 1.0
   gradient_accumulation_steps: 1
+  precision: "bf16-mixed"  # BF16 mixed precision for AMD GPUs (more stable than FP16)
 
   # Data
   data_dir: data/processed

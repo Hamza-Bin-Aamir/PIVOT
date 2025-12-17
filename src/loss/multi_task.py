@@ -93,7 +93,7 @@ class MultiTaskLoss(nn.Module):
         size_loss_kwargs: dict | None = None,
         triage_loss_kwargs: dict | None = None,
         reduction: str = "mean",
-    ):
+    ) -> None:
         super().__init__()
 
         # Validate reduction
@@ -182,10 +182,10 @@ class MultiTaskLoss(nn.Module):
             }
         elif self.reduction == "sum":
             # Already summed across tasks
-            return total_loss
+            return total_loss  # type: ignore[no-any-return]
         else:  # mean
             # Already mean across tasks (since individual losses use mean)
-            return total_loss
+            return total_loss  # type: ignore[no-any-return]
 
     def get_task_weights(self) -> dict[str, float]:
         """Get current task weights.

@@ -9,7 +9,7 @@ from pathlib import Path
 from src.data.loader import DICOMLoader, MedicalScanLoader, NIfTILoader
 
 
-def example_load_dicom_series():
+def example_load_dicom_series() -> None:
     """Example: Load a DICOM series from a directory."""
     print("=" * 80)
     print("Example 1: Loading DICOM Series")
@@ -44,7 +44,7 @@ def example_load_dicom_series():
         print(f"Error loading DICOM series: {e}")
 
 
-def example_load_single_dicom():
+def example_load_single_dicom() -> None:
     """Example: Load a single DICOM file."""
     print("\n" + "=" * 80)
     print("Example 2: Loading Single DICOM File")
@@ -64,7 +64,7 @@ def example_load_single_dicom():
         print(f"Error loading DICOM file: {e}")
 
 
-def example_load_nifti():
+def example_load_nifti() -> None:
     """Example: Load a NIfTI file."""
     print("\n" + "=" * 80)
     print("Example 3: Loading NIfTI File")
@@ -85,7 +85,7 @@ def example_load_nifti():
         print(f"Error loading NIfTI file: {e}")
 
 
-def example_auto_detect_format():
+def example_auto_detect_format() -> None:
     """Example: Automatic format detection with MedicalScanLoader."""
     print("\n" + "=" * 80)
     print("Example 4: Automatic Format Detection")
@@ -118,7 +118,7 @@ def example_auto_detect_format():
             print(f"  ✗ Error: {e}")
 
 
-def example_luna16_workflow():
+def example_luna16_workflow() -> None:
     """Example: Complete LUNA16 data loading workflow."""
     print("\n" + "=" * 80)
     print("Example 5: LUNA16 Dataset Loading Workflow")
@@ -156,7 +156,7 @@ def example_luna16_workflow():
         print(f"Error: {e}")
 
 
-def example_lidc_idri_workflow():
+def example_lidc_idri_workflow() -> None:
     """Example: LIDC-IDRI data loading workflow."""
     print("\n" + "=" * 80)
     print("Example 6: LIDC-IDRI Dataset Loading Workflow")
@@ -198,7 +198,7 @@ def example_lidc_idri_workflow():
         print(f"Error: {e}")
 
 
-def example_metadata_analysis():
+def example_metadata_analysis() -> None:
     """Example: Analyzing metadata from multiple scans."""
     print("\n" + "=" * 80)
     print("Example 7: Metadata Analysis")
@@ -235,7 +235,7 @@ def example_metadata_analysis():
             print("  → Resampling to isotropic resolution recommended")
 
 
-def main():
+def main() -> None:
     """Run all examples."""
     print("\n" + "=" * 80)
     print("MEDICAL SCAN LOADING EXAMPLES")

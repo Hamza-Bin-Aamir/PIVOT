@@ -56,7 +56,7 @@ class ScanMetadata:
     manufacturer: str = ""
     additional_info: dict[str, Any] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize additional_info if not provided."""
         if self.additional_info is None:
             self.additional_info = {}
@@ -126,7 +126,7 @@ class DICOMLoader:
             raise RuntimeError(f"Could not load any DICOM files from {directory}")
 
         # Sort by ImagePositionPatient (z-coordinate)
-        sorted_datasets = DICOMLoader._sort_dicom_slices(dicom_datasets)
+        sorted_datasets = DICOMLoader._sort_dicom_slices(dicom_datasets)  # type: ignore[arg-type]
 
         # Extract metadata from first slice
         metadata = DICOMLoader._extract_metadata(sorted_datasets[0][1], len(sorted_datasets))
@@ -282,8 +282,8 @@ class DICOMLoader:
         }
 
         return ScanMetadata(
-            spacing=spacing,
-            origin=origin,
+            spacing=spacing,  # type: ignore[arg-type]
+            origin=origin,  # type: ignore[arg-type]
             direction=direction,
             shape=shape,
             modality=modality,
@@ -291,7 +291,7 @@ class DICOMLoader:
             study_date=study_date,
             series_description=series_desc,
             slice_thickness=slice_thickness,
-            pixel_spacing=pixel_spacing,
+            pixel_spacing=pixel_spacing,  # type: ignore[arg-type]
             rescale_slope=rescale_slope,
             rescale_intercept=rescale_intercept,
             manufacturer=manufacturer,
@@ -362,14 +362,14 @@ class NIfTILoader:
             raise ValueError(f"Failed to load NIfTI file {filepath}: {e}") from e
 
         # Get image data
-        array = np.array(nii_img.get_fdata(), dtype=np.float32)
+        array = np.array(nii_img.get_fdata(), dtype=np.float32)  # type: ignore[attr-defined]
 
         # Extract metadata from header
         header = nii_img.header
-        affine = nii_img.affine
+        affine = nii_img.affine  # type: ignore[attr-defined]
 
         # Get voxel spacing
-        spacing = tuple(float(x) for x in header.get_zooms()[:3])
+        spacing = tuple(float(x) for x in header.get_zooms()[:3])  # type: ignore[attr-defined]
 
         # Get origin from affine matrix
         origin = tuple(float(x) for x in affine[:3, 3])
@@ -383,14 +383,14 @@ class NIfTILoader:
         shape = array.shape[:3]
 
         metadata = ScanMetadata(
-            spacing=spacing,
-            origin=origin,
+            spacing=spacing,  # type: ignore[arg-type]
+            origin=origin,  # type: ignore[arg-type]
             direction=direction,
             shape=shape,
             modality="CT",  # Default, can be overridden
             additional_info={
-                "nifti_version": str(header["sizeof_hdr"]),
-                "data_type": str(header.get_data_dtype()),
+                "nifti_version": str(header["sizeof_hdr"]),  # type: ignore[index]
+                "data_type": str(header.get_data_dtype()),  # type: ignore[attr-defined]
             },
         )
 

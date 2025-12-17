@@ -3,7 +3,7 @@
 import argparse
 
 
-def main():
+def main() -> None:
     """Main training entry point."""
     parser = argparse.ArgumentParser(description="Train PIVOT model")
     parser.add_argument("--config", type=str, default="configs/train.yaml", help="Config file path")

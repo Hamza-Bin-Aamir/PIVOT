@@ -6,7 +6,7 @@ PyTorch Lightning's LightningModule interface.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import lightning as L
 import torch
@@ -26,6 +26,7 @@ class LitNoduleDetection(L.LightningModule):
     - Loss computation for all tasks
     - Metric logging
     - Optimizer and scheduler configuration
+    - Mixed precision training (FP16, BF16, or FP32)
 
     Args:
         model_depth: Depth of the U-Net encoder/decoder. Default: 4
@@ -37,15 +38,30 @@ class LitNoduleDetection(L.LightningModule):
         learning_rate: Initial learning rate for AdamW. Default: 1e-4
         weight_decay: Weight decay for AdamW. Default: 1e-5
         max_epochs: Maximum number of training epochs for scheduler. Default: 100
+        precision: Training precision mode. Options: '32', '16-mixed', 'bf16-mixed'.
+            - '32': Full FP32 precision (default, most stable)
+            - '16-mixed': Mixed precision FP16 (faster, NVIDIA GPUs)
+            - 'bf16-mixed': Mixed precision BF16 (faster, AMD/Intel GPUs, more stable than FP16)
+            Default: '32'
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
         triage_loss_kwargs: Keyword arguments for WeightedBCELoss. Default: None
 
     Example:
-        >>> # Basic usage
+        >>> # Basic usage with FP32
         >>> model = LitNoduleDetection(model_depth=4, init_features=32)
         >>> trainer = L.Trainer(max_epochs=100)
+        >>> trainer.fit(model, train_dataloader, val_dataloader)
+
+        >>> # Mixed precision FP16 (NVIDIA GPUs)
+        >>> model = LitNoduleDetection(precision='16-mixed')
+        >>> trainer = L.Trainer(max_epochs=100, precision='16-mixed')
+        >>> trainer.fit(model, train_dataloader, val_dataloader)
+
+        >>> # Mixed precision BF16 (AMD/Intel GPUs)
+        >>> model = LitNoduleDetection(precision='bf16-mixed')
+        >>> trainer = L.Trainer(max_epochs=100, precision='bf16-mixed')
         >>> trainer.fit(model, train_dataloader, val_dataloader)
 
         >>> # Custom task weights
@@ -76,12 +92,18 @@ class LitNoduleDetection(L.LightningModule):
         learning_rate: float = 1e-4,
         weight_decay: float = 1e-5,
         max_epochs: int = 100,
+        precision: Literal["32", "16-mixed", "bf16-mixed"] = "32",
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
         triage_loss_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         super().__init__()
+
+        # Validate precision parameter
+        valid_precisions = {"32", "16-mixed", "bf16-mixed"}
+        if precision not in valid_precisions:
+            raise ValueError(f"Invalid precision '{precision}'. Must be one of {valid_precisions}")
 
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
@@ -109,6 +131,7 @@ class LitNoduleDetection(L.LightningModule):
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.max_epochs = max_epochs
+        self.precision = precision
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         """Forward pass through the model.
@@ -123,7 +146,7 @@ class LitNoduleDetection(L.LightningModule):
                 - 'size': (B, 3, 1, 1, 1)
                 - 'triage': (B, 1, 1, 1, 1)
         """
-        return self.model(x)
+        return self.model(x)  # type: ignore[no-any-return]
 
     def training_step(self, batch: dict[str, torch.Tensor], _batch_idx: int) -> torch.Tensor:
         """Training step.
@@ -178,7 +201,7 @@ class LitNoduleDetection(L.LightningModule):
             on_epoch=True,
         )
 
-        return losses["total"]
+        return losses["total"]  # type: ignore[no-any-return]
 
     def validation_step(self, batch: dict[str, torch.Tensor], _batch_idx: int) -> torch.Tensor:
         """Validation step.
@@ -218,7 +241,7 @@ class LitNoduleDetection(L.LightningModule):
         self.log("val/loss_size", losses["size_unweighted"], on_step=False, on_epoch=True)
         self.log("val/loss_triage", losses["triage_unweighted"], on_step=False, on_epoch=True)
 
-        return losses["total"]
+        return losses["total"]  # type: ignore[no-any-return]
 
     def test_step(self, batch: dict[str, torch.Tensor], _batch_idx: int) -> torch.Tensor:
         """Test step.
@@ -258,9 +281,9 @@ class LitNoduleDetection(L.LightningModule):
         self.log("test/loss_size", losses["size_unweighted"], on_step=False, on_epoch=True)
         self.log("test/loss_triage", losses["triage_unweighted"], on_step=False, on_epoch=True)
 
-        return losses["total"]
+        return losses["total"]  # type: ignore[no-any-return]
 
-    def configure_optimizers(self) -> dict[str, Any]:
+    def configure_optimizers(self) -> dict[str, Any]:  # type: ignore[override]
         """Configure optimizer and learning rate scheduler.
 
         Returns:

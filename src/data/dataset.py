@@ -46,7 +46,7 @@ class LUNADataset(Dataset):
         seed: int | None = 1337,
         include_mask: bool = True,
         include_heatmap: bool = True,
-        transform: Any | None = None,
+        transform: Any | None = None,  # type: ignore[misc]  # noqa: ANN401
     ) -> None:
         if positive_fraction <= 0 or positive_fraction > 1:
             msg = f"positive_fraction must be in (0, 1], got {positive_fraction}"
@@ -134,7 +134,7 @@ class LUNADataset(Dataset):
                     msg = "Transform must return a Tensor or dict when invoked with sample"
                     raise TypeError(msg)
 
-        return sample
+        return sample  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Index construction
@@ -212,7 +212,7 @@ class LUNADataset(Dataset):
         if self.cache_size > 0 and key in cache:
             state["cache_hits"] += 1
             cache.move_to_end(key)
-            return cache[key]
+            return cache[key]  # type: ignore[no-any-return]
 
         volume = self._read_volume(path)
         state["cache_misses"] += 1
@@ -271,7 +271,7 @@ class LUNADataset(Dataset):
         if "positive_centers" in volume:
             centers = np.asarray(volume["positive_centers"], dtype=np.float32)
             centers = centers.reshape(-1, 3)
-            return [tuple(map(float, row)) for row in centers]
+            return [tuple(map(float, row)) for row in centers]  # type: ignore[misc]
 
         mask = volume.get("mask")
         if mask is None:
@@ -289,7 +289,7 @@ class LUNADataset(Dataset):
         if coords.shape[0] > self.patches_per_volume:
             indices = rng.choice(coords.shape[0], size=self.patches_per_volume, replace=False)
             coords = coords[indices]
-        return [tuple(map(float, row)) for row in coords]
+        return [tuple(map(float, row)) for row in coords]  # type: ignore[misc]
 
     def _collect_negative_candidates(
         self,
@@ -325,9 +325,9 @@ class LUNADataset(Dataset):
             return []
         array = array.reshape(-1, 3)
         if count >= array.shape[0]:
-            return [tuple(map(float, row)) for row in array]
+            return [tuple(map(float, row)) for row in array]  # type: ignore[misc]
         indices = rng.choice(array.shape[0], size=count, replace=False)
-        return [tuple(map(float, array[i])) for i in indices]
+        return [tuple(map(float, array[i])) for i in indices]  # type: ignore[misc]
 
     def _select_negative_centers(
         self,
@@ -362,7 +362,7 @@ class LUNADataset(Dataset):
                 sampled = self._sample_uniform_centers(remaining, rng, shape_arr)
                 chosen = np.vstack([chosen, sampled]) if chosen.size else sampled
 
-        return [tuple(map(float, row)) for row in chosen.astype(np.float32)]
+        return [tuple(map(float, row)) for row in chosen.astype(np.float32)]  # type: ignore[misc]
 
     def _sample_uniform_centers(
         self, count: int, rng: np.random.Generator, shape: np.ndarray

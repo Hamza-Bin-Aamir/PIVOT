@@ -291,9 +291,9 @@ def calculate_resampling_factor(
         >>> factors = calculate_resampling_factor((2.5, 0.7, 0.7), (1.0, 1.0, 1.0))
         >>> print(factors)  # (2.5, 0.7, 0.7) - upsampling in x, downsampling in y,z
     """
-    return tuple(
+    return tuple(  # type: ignore[return-value]
         orig / target for orig, target in zip(original_spacing, target_spacing, strict=True)
-    )
+    )  # type: ignore[return-value]
 
 
 # Private helper functions
@@ -305,13 +305,13 @@ def _calculate_new_size(
     target_spacing: tuple[float, float, float],
 ) -> tuple[int, int, int]:
     """Calculate new image size after resampling."""
-    new_size = tuple(
+    new_size = tuple(  # type: ignore[assignment]
         int(round(orig_sz * orig_sp / target_sp))
         for orig_sz, orig_sp, target_sp in zip(
             original_size, original_spacing, target_spacing, strict=True
         )
     )
-    return new_size
+    return new_size  # type: ignore[return-value]
 
 
 def _is_isotropic(

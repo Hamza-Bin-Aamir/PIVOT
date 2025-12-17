@@ -63,7 +63,7 @@ class SmoothL1Loss(nn.Module):
         >>> loss = loss_fn(predictions, targets)  # Same shape as input
     """
 
-    def __init__(self, beta: float = 1.0, reduction: str = "mean"):
+    def __init__(self, beta: float = 1.0, reduction: str = "mean") -> None:
         super().__init__()
 
         # Validate reduction

@@ -69,7 +69,7 @@ class FocalLoss(nn.Module):
         gamma: float = 2.0,
         from_logits: bool = True,
         reduction: str = "mean",
-    ):
+    ) -> None:
         super().__init__()
 
         # Validate reduction

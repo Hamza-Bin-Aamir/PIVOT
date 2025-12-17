@@ -37,7 +37,7 @@ def clip_hounsfield(
 
     array = np.asarray(volume, dtype=np.float32).copy()
     np.clip(array, window_min, window_max, out=array)
-    return array
+    return array  # type: ignore[no-any-return]
 
 
 def _min_max_scale(

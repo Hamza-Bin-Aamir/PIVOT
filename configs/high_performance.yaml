@@ -10,6 +10,7 @@ train:
   gradient_clip: 1.0
   gradient_accumulation_steps: 2  # Effective batch size = 8
   early_stopping_patience: 30
+  precision: "16-mixed"  # Mixed precision FP16 for faster training on NVIDIA GPUs
 
   # Data
   data_dir: data/processed
