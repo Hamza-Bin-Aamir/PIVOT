@@ -11,6 +11,11 @@ train:
   gradient_accumulation_steps: 2  # Compensate for smaller batch
   precision: "bf16-mixed"  # BF16 mixed precision for Intel GPUs (more stable than FP16)
 
+  # Hard negative mining
+  use_hard_negative_mining: true
+  hard_negative_ratio: 3.0
+  min_negative_samples: 100
+
   # Data
   data_dir: data/processed
   batch_size: 1  # Conservative for Intel GPUs

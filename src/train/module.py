@@ -13,7 +13,7 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from src.loss import MultiTaskLoss
+from src.loss import HardNegativeMiningLoss, MultiTaskLoss
 from src.model import MultiTaskUNet3D
 
 
@@ -27,6 +27,7 @@ class LitNoduleDetection(L.LightningModule):
     - Metric logging
     - Optimizer and scheduler configuration
     - Mixed precision training (FP16, BF16, or FP32)
+    - Hard negative mining for center detection
 
     Args:
         model_depth: Depth of the U-Net encoder/decoder. Default: 4
@@ -43,6 +44,12 @@ class LitNoduleDetection(L.LightningModule):
             - '16-mixed': Mixed precision FP16 (faster, NVIDIA GPUs)
             - 'bf16-mixed': Mixed precision BF16 (faster, AMD/Intel GPUs, more stable than FP16)
             Default: '32'
+        use_hard_negative_mining: Enable hard negative mining for center detection.
+            Helps address extreme class imbalance. Default: False
+        hard_negative_ratio: Ratio of hard negatives to positives when mining is enabled.
+            Only used if use_hard_negative_mining=True. Default: 3.0
+        min_negative_samples: Minimum hard negatives to mine regardless of positive count.
+            Only used if use_hard_negative_mining=True. Default: 100
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
@@ -62,6 +69,14 @@ class LitNoduleDetection(L.LightningModule):
         >>> # Mixed precision BF16 (AMD/Intel GPUs)
         >>> model = LitNoduleDetection(precision='bf16-mixed')
         >>> trainer = L.Trainer(max_epochs=100, precision='bf16-mixed')
+        >>> trainer.fit(model, train_dataloader, val_dataloader)
+
+        >>> # With hard negative mining for center detection
+        >>> model = LitNoduleDetection(
+        ...     use_hard_negative_mining=True,
+        ...     hard_negative_ratio=3.0,
+        ...     min_negative_samples=100
+        ... )
         >>> trainer.fit(model, train_dataloader, val_dataloader)
 
         >>> # Custom task weights
@@ -93,6 +108,9 @@ class LitNoduleDetection(L.LightningModule):
         weight_decay: float = 1e-5,
         max_epochs: int = 100,
         precision: Literal["32", "16-mixed", "bf16-mixed"] = "32",
+        use_hard_negative_mining: bool = False,
+        hard_negative_ratio: float = 3.0,
+        min_negative_samples: int = 100,
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
@@ -104,6 +122,13 @@ class LitNoduleDetection(L.LightningModule):
         valid_precisions = {"32", "16-mixed", "bf16-mixed"}
         if precision not in valid_precisions:
             raise ValueError(f"Invalid precision '{precision}'. Must be one of {valid_precisions}")
+
+        # Validate hard negative mining parameters
+        if use_hard_negative_mining:
+            if hard_negative_ratio <= 0:
+                raise ValueError(f"hard_negative_ratio must be positive, got {hard_negative_ratio}")
+            if min_negative_samples < 0:
+                raise ValueError(f"min_negative_samples must be >= 0, got {min_negative_samples}")
 
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
@@ -127,11 +152,25 @@ class LitNoduleDetection(L.LightningModule):
             reduction="mean",
         )
 
+        # Wrap center loss with hard negative mining if enabled
+        if use_hard_negative_mining:
+            # Get the base center loss from MultiTaskLoss
+            base_center_loss = self.loss_fn.center_loss
+
+            # Wrap it with hard negative mining
+            self.loss_fn.center_loss = HardNegativeMiningLoss(  # type: ignore[assignment]
+                base_loss=base_center_loss,
+                hard_negative_ratio=hard_negative_ratio,
+                min_negative_samples=min_negative_samples,
+                reduction="mean",
+            )
+
         # Store optimizer parameters
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.max_epochs = max_epochs
         self.precision = precision
+        self.use_hard_negative_mining = use_hard_negative_mining
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         """Forward pass through the model.

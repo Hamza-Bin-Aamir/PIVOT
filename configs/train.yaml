@@ -19,6 +19,11 @@ train:
   weight_decay: 0.00001
   precision: "32"  # Options: "32" (FP32), "16-mixed" (FP16), "bf16-mixed" (BF16)
 
+  # Hard negative mining (for center detection)
+  use_hard_negative_mining: false  # Enable Online Hard Example Mining (OHEM)
+  hard_negative_ratio: 3.0  # Ratio of hard negatives to positives
+  min_negative_samples: 100  # Minimum hard negatives to mine
+
   # Optimizer settings
   optimizer:
     type: "adam"

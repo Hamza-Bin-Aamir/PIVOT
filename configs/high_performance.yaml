@@ -12,6 +12,11 @@ train:
   early_stopping_patience: 30
   precision: "16-mixed"  # Mixed precision FP16 for faster training on NVIDIA GPUs
 
+  # Hard negative mining (enabled for better performance)
+  use_hard_negative_mining: true  # Enable Online Hard Example Mining (OHEM)
+  hard_negative_ratio: 4.0  # More aggressive mining for production
+  min_negative_samples: 200  # Higher minimum for larger batches
+
   # Data
   data_dir: data/processed
   batch_size: 4

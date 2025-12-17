@@ -265,6 +265,43 @@ trainer = L.Trainer(max_epochs=100, precision="16-mixed")
 trainer.fit(model, train_dataloader, val_dataloader)
 ```
 
+#### Hard Negative Mining
+
+PIVOT implements Online Hard Example Mining (OHEM) to address the extreme class imbalance in center detection, where background voxels vastly outnumber nodule centers.
+
+**Benefits:**
+- Focuses training on hardest negative examples
+- Reduces influence of easy background voxels
+- Improves center detection accuracy
+- Automatic positive/negative ratio balancing
+
+**Configuration:**
+```yaml
+train:
+  use_hard_negative_mining: true  # Enable OHEM
+  hard_negative_ratio: 3.0  # Mine 3x negatives per positive
+  min_negative_samples: 100  # Minimum negatives to mine
+```
+
+**In Code:**
+```python
+from src.train import LitNoduleDetection
+
+# Enable hard negative mining
+model = LitNoduleDetection(
+    use_hard_negative_mining=True,
+    hard_negative_ratio=3.0,  # 3 hard negatives per positive
+    min_negative_samples=100
+)
+
+trainer.fit(model, train_dataloader, val_dataloader)
+```
+
+**Recommended Settings:**
+- **Development/Testing:** `use_hard_negative_mining=false` (faster)
+- **Production Training:** `use_hard_negative_mining=true, hard_negative_ratio=3.0-5.0`
+- **High Performance:** `use_hard_negative_mining=true, hard_negative_ratio=4.0-5.0, min_negative_samples=200`
+
 See **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** for complete documentation.
 
 ## Dataset

@@ -612,4 +612,166 @@ class TestMixedPrecisionTraining:
 
         with pytest.raises(ValueError):
             LitNoduleDetection(precision="BF16-MIXED")
-            LitNoduleDetection(precision="BF16-MIXED")
+
+
+class TestHardNegativeMiningIntegration:
+    """Test suite for hard negative mining integration in training module."""
+
+    def test_init_with_hard_negative_mining_disabled(self):
+        """Test initialization with hard negative mining disabled (default)."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.use_hard_negative_mining is False
+        assert not hasattr(model, "hard_negative_ratio") or model.hparams.hard_negative_ratio == 3.0
+
+    def test_init_with_hard_negative_mining_enabled(self):
+        """Test initialization with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True)
+
+        assert model.hparams.use_hard_negative_mining is True
+        assert model.use_hard_negative_mining is True
+
+    def test_init_with_custom_hard_negative_ratio(self):
+        """Test initialization with custom hard negative ratio."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True, hard_negative_ratio=5.0, min_negative_samples=200
+        )
+
+        assert model.hparams.use_hard_negative_mining is True
+        assert model.hparams.hard_negative_ratio == 5.0
+        assert model.hparams.min_negative_samples == 200
+
+    def test_init_invalid_hard_negative_ratio(self):
+        """Test that invalid hard_negative_ratio raises ValueError."""
+        with pytest.raises(ValueError, match="hard_negative_ratio must be positive"):
+            LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=0.0)
+
+        with pytest.raises(ValueError, match="hard_negative_ratio must be positive"):
+            LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=-1.0)
+
+    def test_init_invalid_min_negative_samples(self):
+        """Test that invalid min_negative_samples raises ValueError."""
+        with pytest.raises(ValueError, match="min_negative_samples must be >= 0"):
+            LitNoduleDetection(use_hard_negative_mining=True, min_negative_samples=-1)
+
+    def test_center_loss_wrapped_when_enabled(self):
+        """Test that center loss is wrapped with HardNegativeMiningLoss when enabled."""
+        from src.loss.hard_negative_mining import HardNegativeMiningLoss
+
+        model = LitNoduleDetection(use_hard_negative_mining=True)
+
+        # Center loss should be wrapped
+        assert isinstance(model.loss_fn.center_loss, HardNegativeMiningLoss)
+
+    def test_center_loss_not_wrapped_when_disabled(self):
+        """Test that center loss is not wrapped when hard negative mining is disabled."""
+        from src.loss.focal import FocalLoss
+        from src.loss.hard_negative_mining import HardNegativeMiningLoss
+
+        model = LitNoduleDetection(use_hard_negative_mining=False)
+
+        # Center loss should be original FocalLoss, not wrapped
+        assert isinstance(model.loss_fn.center_loss, FocalLoss)
+        assert not isinstance(model.loss_fn.center_loss, HardNegativeMiningLoss)
+
+    def test_training_step_with_hard_negative_mining(self):
+        """Test training step with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=3.0)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_validation_step_with_hard_negative_mining(self):
+        """Test validation step with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=3.0)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.validation_step(batch, 0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.item() >= 0
+
+    def test_backward_pass_with_hard_negative_mining(self):
+        """Test backward pass with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=3.0)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+        loss.backward()
+
+        # Verify gradients are computed
+        has_gradients = any(p.grad is not None for p in model.parameters() if p.requires_grad)
+        assert has_gradients
+
+    def test_hard_negative_mining_with_mixed_precision(self):
+        """Test hard negative mining works with mixed precision."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True, hard_negative_ratio=3.0, precision="16-mixed"
+        )
+
+        assert model.use_hard_negative_mining is True
+        assert model.precision == "16-mixed"
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        assert torch.isfinite(loss)
+
+    def test_hard_negative_mining_with_custom_loss_weights(self):
+        """Test hard negative mining with custom task weights."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True,
+            hard_negative_ratio=4.0,
+            center_weight=2.0,
+            seg_weight=1.5,
+        )
+
+        assert model.hparams.center_weight == 2.0
+        assert model.hparams.seg_weight == 1.5
+        assert model.use_hard_negative_mining is True
+
+    def test_hyperparameter_saving_with_hard_negative_mining(self):
+        """Test that hard negative mining params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True, hard_negative_ratio=5.0, min_negative_samples=250
+        )
+
+        assert "use_hard_negative_mining" in model.hparams
+        assert "hard_negative_ratio" in model.hparams
+        assert "min_negative_samples" in model.hparams
+        assert model.hparams.use_hard_negative_mining is True
+        assert model.hparams.hard_negative_ratio == 5.0
+        assert model.hparams.min_negative_samples == 250
