@@ -53,6 +53,12 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 addopts = "-v --cov=src --cov-report=html --cov-report=term"
+markers = [
+    "integration: Component integration tests",
+    "system: End-to-end system tests",
+    "slow: Tests that take > 30 seconds",
+    "gpu: Tests requiring GPU hardware",
+]
 
 [project]
 name = "pivot"
@@ -83,44 +89,37 @@ dependencies = [
     "torch>=2.0.0",
     "torchvision>=0.15.0",
     "monai>=1.3.0",
-
     # Medical imaging libraries
     "SimpleITK>=2.3.0",
     "nibabel>=5.0.0",
     "pydicom>=2.4.0",
-
     # Numerical computing
     "numpy>=1.24.0",
     "scipy>=1.11.0",
-
     # Data handling
     "pandas>=2.0.0",
     "h5py>=3.9.0",
-
     # Image processing
     "scikit-image>=0.21.0",
     "opencv-python>=4.8.0",
     "albumentations>=1.3.0",
-
     # Visualization
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "plotly>=5.17.0",
-
     # Configuration and utilities
     "pyyaml>=6.0",
     "omegaconf>=2.3.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.66.0",
-
     # Experiment tracking
     "wandb>=0.16.0",
     "tensorboard>=2.15.0",
-
     # API and web framework
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
     "pydantic>=2.5.0",
+    "lightning>=2.1.0",
 ]
 
 [project.optional-dependencies]
