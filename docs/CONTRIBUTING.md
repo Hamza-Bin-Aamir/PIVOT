@@ -234,6 +234,187 @@ def test_is_positive_zero():
 
 All branches covered: initialization, getter, and all three conditional paths (positive, negative, zero).
 
+### Test Hierarchy
+
+PIVOT follows a three-tier testing strategy:
+
+#### 1. Unit Tests (Required)
+
+**Purpose**: Test individual functions, classes, and methods in isolation.
+
+**Requirements**:
+- **100% coverage mandatory** for all new code
+- Fast execution (< 1 second per test)
+- No external dependencies (files, network, databases)
+- Mock/stub dependencies where needed
+- One assertion concept per test
+
+**Location**: `tests/test_*.py`
+
+**Example**:
+```python
+# Unit test for loss function
+def test_dice_loss_perfect_overlap():
+    """Test Dice loss with perfect prediction-target overlap."""
+    loss_fn = DiceLoss()
+    predictions = torch.ones(2, 1, 8, 8, 8)
+    targets = torch.ones(2, 1, 8, 8, 8)
+
+    loss = loss_fn(predictions, targets)
+
+    assert torch.isclose(loss, torch.tensor(0.0), atol=1e-6)
+```
+
+**When to write**:
+- Every new function, class, or method
+- Every bug fix (test the bug first, then fix it)
+- Every edge case or boundary condition
+
+#### 2. Component Tests (Recommended)
+
+**Purpose**: Test interactions between multiple units (e.g., model + loss, data loader + augmentation).
+
+**Requirements**:
+- Test realistic workflows with actual components
+- May use small real data samples
+- Moderate execution time (< 10 seconds per test)
+- Verify component integration, not individual units
+
+**Location**: `tests/integration/test_*.py`
+
+**Example**:
+```python
+# Component test for training step
+def test_training_step_with_model_and_loss():
+    """Test complete training step with real model and loss."""
+    model = LitNoduleDetection()
+    batch = {
+        "image": torch.randn(1, 1, 64, 64, 64),
+        "segmentation": torch.randint(0, 2, (1, 1, 64, 64, 64)).float(),
+        "center": torch.randint(0, 2, (1, 1, 64, 64, 64)).float(),
+        "size": torch.randn(1, 3, 1, 1, 1),
+        "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+    }
+
+    loss = model.training_step(batch, 0)
+
+    assert loss.requires_grad
+    assert loss.item() >= 0
+    # Verify loss can backpropagate
+    loss.backward()
+    assert model.model.encoder.initial_conv.weight.grad is not None
+```
+
+**When to write**:
+- After implementing new multi-component features
+- When testing data pipelines (preprocessing + augmentation + loading)
+- For training loop validation (model + optimizer + loss)
+- To verify API endpoints work with database and services
+
+#### 3. System Tests (Optional but Encouraged)
+
+**Purpose**: Test the entire system end-to-end with real data and realistic scenarios.
+
+**Requirements**:
+- Test complete workflows (training, inference, deployment)
+- Use real or representative datasets
+- May take longer (minutes per test)
+- Can be marked with `@pytest.mark.slow` to skip in CI
+
+**Location**: `tests/system/test_*.py`
+
+**Example**:
+```python
+@pytest.mark.slow
+def test_end_to_end_training():
+    """Test complete training pipeline on small real dataset."""
+    # Setup data
+    data_module = NoduleDataModule(data_dir="tests/fixtures/mini_luna16")
+
+    # Setup model
+    model = LitNoduleDetection(max_epochs=2)
+
+    # Setup trainer
+    trainer = Trainer(
+        max_epochs=2,
+        accelerator="cpu",
+        devices=1,
+        fast_dev_run=False,
+    )
+
+    # Run training
+    trainer.fit(model, data_module)
+
+    # Verify model was trained
+    assert trainer.logged_metrics["train/loss"] > 0
+    assert trainer.logged_metrics["val/loss"] > 0
+```
+
+**When to write**:
+- Before major releases
+- For critical workflows (training, inference, deployment)
+- When testing hardware compatibility (CUDA, ROCm, Intel)
+- To validate Docker containers and deployment scripts
+
+#### Running Different Test Types
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run only unit tests (fast)
+uv run pytest tests/ -k "not integration and not system"
+
+# Run unit + component tests
+uv run pytest tests/ -k "not system"
+
+# Run all tests including slow system tests
+uv run pytest tests/ --slow
+
+# Run with coverage (unit tests only)
+uv run pytest tests/ -k "not integration and not system" --cov=src --cov-report=term-missing
+```
+
+#### Test Marking
+
+Use pytest markers to categorize tests:
+
+```python
+import pytest
+
+# Unit test (default, no marker needed)
+def test_function():
+    assert True
+
+# Component test
+@pytest.mark.integration
+def test_component_interaction():
+    assert True
+
+# Slow system test
+@pytest.mark.slow
+@pytest.mark.system
+def test_end_to_end_workflow():
+    assert True
+
+# Hardware-specific test
+@pytest.mark.gpu
+def test_cuda_training():
+    assert torch.cuda.is_available()
+```
+
+Configure markers in `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+markers = [
+    "integration: Component integration tests",
+    "system: End-to-end system tests",
+    "slow: Tests that take > 30 seconds",
+    "gpu: Tests requiring GPU hardware",
+]
+```
+
 ## Cross-Platform Workflow
 
 PIVOT runs the same way on Linux, macOS, and Windows. Follow the guidance below
