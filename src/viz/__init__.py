@@ -1,5 +1,12 @@
 """Visualization tools for medical imaging and model outputs."""
 
+from .confidence import (
+    ConfidenceConfig,
+    plot_calibration_curve,
+    plot_confidence_histogram,
+    visualize_confidence_map,
+    visualize_uncertainty_regions,
+)
 from .gradcam import (
     GradCAM,
     GradCAMConfig,
@@ -44,4 +51,10 @@ __all__ = [
     "GradCAMConfig",
     "overlay_gradcam_on_volume",
     "render_gradcam_3d",
+    # Confidence visualization
+    "ConfidenceConfig",
+    "visualize_confidence_map",
+    "visualize_uncertainty_regions",
+    "plot_calibration_curve",
+    "plot_confidence_histogram",
 ]
