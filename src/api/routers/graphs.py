@@ -179,3 +179,148 @@ async def get_loss_graph_by_session(session_id: str) -> LossGraphResponse:
         val_loss=val_loss,
         total_points=len(train_loss) + len(val_loss),
     )
+
+
+class MetricsGraphResponse(BaseModel):
+    """Response model for metrics graph endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        metric_name: Name of the metric (e.g., 'accuracy', 'dice', 'iou')
+        train_data: List of training metric data points
+        val_data: List of validation metric data points
+        total_points: Total number of data points
+    """
+
+    session_id: str
+    experiment_name: str
+    metric_name: str
+    train_data: list[DataPoint]
+    val_data: list[DataPoint]
+    total_points: int
+
+
+@router.get("/metrics/{metric_name}", response_model=MetricsGraphResponse)
+async def get_metrics_graph(metric_name: str) -> MetricsGraphResponse:
+    """Get metric data formatted for plotting (latest session).
+
+    This endpoint returns training and validation metric values for a specific
+    metric (e.g., 'accuracy', 'dice', 'iou') formatted for dashboard plotting.
+    The x-axis represents epochs, and the y-axis represents metric values.
+
+    Args:
+        metric_name: Name of the metric to retrieve (e.g., 'accuracy', 'dice')
+
+    Returns:
+        MetricsGraphResponse with train and validation metric data points
+
+    Raises:
+        HTTPException: If session manager not initialized or no sessions exist
+
+    Example:
+        GET /api/v1/graphs/metrics/accuracy
+
+        Response:
+        {
+            "session_id": "session_abc123",
+            "experiment_name": "baseline_v1",
+            "metric_name": "accuracy",
+            "train_data": [
+                {"x": 1.0, "y": 0.75},
+                {"x": 2.0, "y": 0.82}
+            ],
+            "val_data": [
+                {"x": 1.0, "y": 0.72},
+                {"x": 2.0, "y": 0.79}
+            ],
+            "total_points": 4
+        }
+    """
+    try:
+        manager = get_session_manager()
+    except HTTPException:
+        raise
+
+    try:
+        session_id = get_latest_session_id(manager)
+        session_info = manager.get_session_info(session_id)
+    except HTTPException:
+        raise
+
+    # For now, return empty data - will be populated when metrics collection is integrated
+    # This structure is ready for frontend consumption
+    train_data: list[DataPoint] = []
+    val_data: list[DataPoint] = []
+
+    return MetricsGraphResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        metric_name=metric_name,
+        train_data=train_data,
+        val_data=val_data,
+        total_points=len(train_data) + len(val_data),
+    )
+
+
+@router.get("/metrics/{metric_name}/{session_id}", response_model=MetricsGraphResponse)
+async def get_metrics_graph_by_session(
+    metric_name: str, session_id: str
+) -> MetricsGraphResponse:
+    """Get metric data formatted for plotting for a specific session.
+
+    This endpoint returns training and validation metric values for a specific
+    metric and session formatted for dashboard plotting.
+
+    Args:
+        metric_name: Name of the metric to retrieve (e.g., 'accuracy', 'dice')
+        session_id: Training session ID
+
+    Returns:
+        MetricsGraphResponse with train and validation metric data points
+
+    Raises:
+        HTTPException: If session manager not initialized or session not found
+
+    Example:
+        GET /api/v1/graphs/metrics/accuracy/session_abc123
+
+        Response:
+        {
+            "session_id": "session_abc123",
+            "experiment_name": "baseline_v1",
+            "metric_name": "accuracy",
+            "train_data": [
+                {"x": 1.0, "y": 0.75},
+                {"x": 2.0, "y": 0.82}
+            ],
+            "val_data": [
+                {"x": 1.0, "y": 0.72},
+                {"x": 2.0, "y": 0.79}
+            ],
+            "total_points": 4
+        }
+    """
+    try:
+        manager = get_session_manager()
+    except HTTPException:
+        raise
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # For now, return empty data - will be populated when metrics collection is integrated
+    # This structure is ready for frontend consumption
+    train_data: list[DataPoint] = []
+    val_data: list[DataPoint] = []
+
+    return MetricsGraphResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        metric_name=metric_name,
+        train_data=train_data,
+        val_data=val_data,
+        total_points=len(train_data) + len(val_data),
+    )
