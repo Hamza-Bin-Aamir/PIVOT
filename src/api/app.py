@@ -9,17 +9,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import APIConfig
+from .database import init_database
 from .logging_config import setup_logging
 from .process_manager import TrainingProcessManager
 from .routers import (
+    alerts,
+    checkpoints,
     epochs,
     graphs,
     health,
     metrics,
+    monitor,
     notifications,
     sse,
     status,
     training,
+    webhook,
     websocket,
 )
 from .session_manager import TrainingSessionManager
@@ -54,6 +59,12 @@ def create_app(
     logger.info('Initializing PIVOT API', extra={'extra_data': {
         'version': config.version,
         'debug': config.debug,
+    }})
+
+    # Initialize database
+    init_database(config)
+    logger.info('Database initialized', extra={'extra_data': {
+        'database_url': config.database_url,
     }})
 
     # Create FastAPI app
@@ -104,6 +115,10 @@ def create_app(
     app.include_router(
         notifications.router, prefix="/api/v1", tags=["notifications"]
     )
+    app.include_router(checkpoints.router, prefix="/api/v1", tags=["checkpoints"])
+    app.include_router(monitor.router, prefix="/api/v1", tags=["monitoring"])
+    app.include_router(alerts.router, prefix="/api/v1", tags=["alerting"])
+    app.include_router(webhook.router, prefix="/api/v1", tags=["webhooks"])
 
     # Root endpoint
     @app.get("/")

@@ -80,6 +80,7 @@ class APIConfig:
         debug: Enable debug mode
         log_file: Path to log file (None to disable file logging)
         error_log_file: Path to error log file (None to disable)
+        database_url: Database connection URL (SQLite or PostgreSQL)
         server: Server configuration
         cors: CORS configuration
     """
@@ -92,6 +93,7 @@ class APIConfig:
     error_log_file: Path | None = field(
         default_factory=lambda: Path("logs/error.log")
     )
+    database_url: str = "sqlite:///./pivot_metrics.db"
     server: ServerConfig = field(default_factory=ServerConfig)
     cors: CORSConfig = field(default_factory=CORSConfig)
 

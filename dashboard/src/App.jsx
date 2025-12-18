@@ -3,6 +3,7 @@ import { healthService } from './api/services';
 import ConfigPanel from './components/ConfigPanel';
 import MetricsPanel from './components/MetricsPanel';
 import LogsPanel from './components/LogsPanel';
+import InferencePanel from './components/InferencePanel';
 import './App.css';
 
 function App() {
@@ -44,12 +45,19 @@ function App() {
         >
           Logs
         </button>
+        <button
+          className={activeTab === 'inference' ? 'active' : ''}
+          onClick={() => setActiveTab('inference')}
+        >
+          Inference
+        </button>
       </nav>
 
       <main className="app-main">
         {activeTab === 'config' && <ConfigPanel />}
         {activeTab === 'metrics' && <MetricsPanel />}
         {activeTab === 'logs' && <LogsPanel />}
+        {activeTab === 'inference' && <InferencePanel />}
       </main>
     </div>
   );

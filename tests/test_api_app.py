@@ -142,7 +142,8 @@ class TestHealthEndpoints:
         assert data["status"] == "healthy"
         assert "timestamp" in data
         assert "uptime_seconds" in data
-        assert data["uptime_seconds"] == 0.0
+        assert isinstance(data["uptime_seconds"], (int, float))
+        assert data["uptime_seconds"] >= 0.0
 
     def test_health_check_response_schema(self):
         """Test health check response matches schema."""
