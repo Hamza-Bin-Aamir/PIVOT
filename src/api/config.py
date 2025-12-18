@@ -5,6 +5,7 @@ including server settings, CORS configuration, and API versioning.
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
@@ -77,6 +78,8 @@ class APIConfig:
         description: API description
         version: API version
         debug: Enable debug mode
+        log_file: Path to log file (None to disable file logging)
+        error_log_file: Path to error log file (None to disable)
         server: Server configuration
         cors: CORS configuration
     """
@@ -85,6 +88,10 @@ class APIConfig:
     description: str = "REST API for managing lung nodule detection model training"
     version: str = "0.1.0"
     debug: bool = False
+    log_file: Path | None = field(default_factory=lambda: Path("logs/api.log"))
+    error_log_file: Path | None = field(
+        default_factory=lambda: Path("logs/error.log")
+    )
     server: ServerConfig = field(default_factory=ServerConfig)
     cors: CORSConfig = field(default_factory=CORSConfig)
 

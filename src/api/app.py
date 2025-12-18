@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import APIConfig
+from .logging_config import setup_logging
 from .process_manager import TrainingProcessManager
 from .routers import (
     epochs,
@@ -33,6 +34,8 @@ def create_app(
 
     Args:
         config: API configuration. If None, uses default configuration
+        session_manager: Training session manager
+        process_manager: Training process manager
 
     Returns:
         Configured FastAPI application
@@ -46,6 +49,13 @@ def create_app(
     if config is None:
         config = APIConfig()
 
+    # Setup logging
+    logger = setup_logging(config)
+    logger.info('Initializing PIVOT API', extra={'extra_data': {
+        'version': config.version,
+        'debug': config.debug,
+    }})
+
     # Create FastAPI app
     app = FastAPI(
         title=config.title,
@@ -55,6 +65,8 @@ def create_app(
         docs_url="/docs" if config.debug else None,
         redoc_url="/redoc" if config.debug else None,
     )
+
+    logger.info('FastAPI application created')
 
     # Add CORS middleware
     if config.cors.enabled:
