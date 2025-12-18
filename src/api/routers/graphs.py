@@ -324,3 +324,128 @@ async def get_metrics_graph_by_session(
         val_data=val_data,
         total_points=len(train_data) + len(val_data),
     )
+
+
+class LearningRateGraphResponse(BaseModel):
+    """Response model for learning rate graph endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        lr_data: List of learning rate data points
+        total_points: Total number of data points
+    """
+
+    session_id: str
+    experiment_name: str
+    lr_data: list[DataPoint]
+    total_points: int
+
+
+@router.get("/learning-rate", response_model=LearningRateGraphResponse)
+async def get_learning_rate_graph() -> LearningRateGraphResponse:
+    """Get learning rate data formatted for plotting (latest session).
+
+    This endpoint returns learning rate values over the course of training,
+    formatted for dashboard plotting. The x-axis represents epochs or steps,
+    and the y-axis represents the learning rate value.
+
+    Useful for visualizing learning rate schedules (constant, decay, warmup, etc.)
+
+    Returns:
+        LearningRateGraphResponse with learning rate data points
+
+    Raises:
+        HTTPException: If session manager not initialized or no sessions exist
+
+    Example:
+        GET /api/v1/graphs/learning-rate
+
+        Response:
+        {
+            "session_id": "session_abc123",
+            "experiment_name": "baseline_v1",
+            "lr_data": [
+                {"x": 1.0, "y": 0.001},
+                {"x": 2.0, "y": 0.0009},
+                {"x": 3.0, "y": 0.00081}
+            ],
+            "total_points": 3
+        }
+    """
+    try:
+        manager = get_session_manager()
+    except HTTPException:
+        raise
+
+    try:
+        session_id = get_latest_session_id(manager)
+        session_info = manager.get_session_info(session_id)
+    except HTTPException:
+        raise
+
+    # For now, return empty data - will be populated when LR tracking is integrated
+    # This structure is ready for frontend consumption
+    lr_data: list[DataPoint] = []
+
+    return LearningRateGraphResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        lr_data=lr_data,
+        total_points=len(lr_data),
+    )
+
+
+@router.get("/learning-rate/{session_id}", response_model=LearningRateGraphResponse)
+async def get_learning_rate_graph_by_session(
+    session_id: str,
+) -> LearningRateGraphResponse:
+    """Get learning rate data formatted for plotting for a specific session.
+
+    This endpoint returns learning rate values over the course of training
+    for a specific session, formatted for dashboard plotting.
+
+    Args:
+        session_id: Training session ID
+
+    Returns:
+        LearningRateGraphResponse with learning rate data points
+
+    Raises:
+        HTTPException: If session manager not initialized or session not found
+
+    Example:
+        GET /api/v1/graphs/learning-rate/session_abc123
+
+        Response:
+        {
+            "session_id": "session_abc123",
+            "experiment_name": "baseline_v1",
+            "lr_data": [
+                {"x": 1.0, "y": 0.001},
+                {"x": 2.0, "y": 0.0009},
+                {"x": 3.0, "y": 0.00081}
+            ],
+            "total_points": 3
+        }
+    """
+    try:
+        manager = get_session_manager()
+    except HTTPException:
+        raise
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # For now, return empty data - will be populated when LR tracking is integrated
+    # This structure is ready for frontend consumption
+    lr_data: list[DataPoint] = []
+
+    return LearningRateGraphResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        lr_data=lr_data,
+        total_points=len(lr_data),
+    )
