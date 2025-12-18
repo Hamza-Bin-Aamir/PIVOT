@@ -13,13 +13,20 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: end-of-file-fixer
+        stages: [pre-commit]
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-added-large-files
         args: ['--maxkb=10000']
+        stages: [pre-commit]
       - id: check-json
+        stages: [pre-commit]
       - id: check-toml
+        stages: [pre-commit]
       - id: mixed-line-ending
+        stages: [pre-commit]
 
   # Ruff type check
   - repo: local
@@ -41,6 +48,7 @@ repos:
         types: [python]
         # Mypy often needs to scan the whole project to work correctly
         pass_filenames: false
+        stages: [pre-commit]
 
 
   # pytest
@@ -53,3 +61,4 @@ repos:
         types: [python]
         pass_filenames: false
         always_run: true
+        stages: [pre-commit]
