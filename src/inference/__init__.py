@@ -10,6 +10,7 @@ from .output_formatter import (
 )
 from .overlap_blending import BlendMode, OverlapBlending
 from .sliding_window import SlidingWindowInference
+from .torchscript_optimizer import CompilationMethod, TorchScriptOptimizer
 from .triage_calibration import CalibrationMethod, TriageScoreCalibration
 
 __all__ = [
@@ -24,4 +25,6 @@ __all__ = [
     "InferenceMetadata",
     "StructuredInferenceOutput",
     "OutputFormat",
+    "TorchScriptOptimizer",
+    "CompilationMethod",
 ]
