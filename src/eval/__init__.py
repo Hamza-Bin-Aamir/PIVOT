@@ -23,6 +23,12 @@ from .froc import (
     compute_sensitivity_at_fppi,
     match_detections_to_ground_truth,
 )
+from .pipeline import (
+    DetectionPrediction,
+    EvaluationPipeline,
+    EvaluationResults,
+    GroundTruth,
+)
 from .size_accuracy import (
     calculate_mae,
     calculate_rmse,
@@ -74,4 +80,9 @@ __all__ = [
     "compute_auc_roc",
     "compute_calibration_curve",
     "calculate_expected_calibration_error",
+    # Pipeline
+    "DetectionPrediction",
+    "GroundTruth",
+    "EvaluationPipeline",
+    "EvaluationResults",
 ]
