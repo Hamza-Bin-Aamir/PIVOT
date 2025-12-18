@@ -1,6 +1,14 @@
 """Inference pipeline and post-processing."""
 
 from .inference_loader import InferenceDataLoader
+from .nodule_properties import (
+    NoduleProperties,
+    compute_bounding_box,
+    compute_diameter,
+    compute_volume,
+    extract_nodule_properties,
+    extract_properties_from_mask,
+)
 from .output_formatter import (
     InferenceMetadata,
     NoduleDetection,
@@ -9,6 +17,14 @@ from .output_formatter import (
     StructuredOutputFormatter,
 )
 from .overlap_blending import BlendMode, OverlapBlending
+from .peak_detection import detect_peaks_3d, extract_peak_coordinates, non_maximum_suppression_3d
+from .post_processing import (
+    apply_all_filters,
+    compute_iou_3d,
+    filter_by_confidence,
+    filter_by_overlap,
+    filter_by_size,
+)
 from .sliding_window import SlidingWindowInference
 from .torchscript_optimizer import CompilationMethod, TorchScriptOptimizer
 from .triage_calibration import CalibrationMethod, TriageScoreCalibration
@@ -27,4 +43,18 @@ __all__ = [
     "OutputFormat",
     "TorchScriptOptimizer",
     "CompilationMethod",
+    "detect_peaks_3d",
+    "non_maximum_suppression_3d",
+    "extract_peak_coordinates",
+    "NoduleProperties",
+    "extract_nodule_properties",
+    "extract_properties_from_mask",
+    "compute_volume",
+    "compute_diameter",
+    "compute_bounding_box",
+    "filter_by_size",
+    "filter_by_confidence",
+    "filter_by_overlap",
+    "compute_iou_3d",
+    "apply_all_filters",
 ]
