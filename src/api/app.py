@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from .config import APIConfig
 from .process_manager import TrainingProcessManager
-from .routers import epochs, graphs, health, metrics, status, training
+from .routers import epochs, graphs, health, metrics, status, training, websocket
 from .session_manager import TrainingSessionManager
 
 
@@ -62,6 +62,7 @@ def create_app(
         epochs.set_session_manager(session_manager)
         metrics.set_session_manager(session_manager)
         graphs.set_session_manager(session_manager)
+        websocket.set_session_manager(session_manager)
 
     # Initialize process manager
     if process_manager is not None:
@@ -74,6 +75,7 @@ def create_app(
     app.include_router(metrics.router, prefix="/api/v1", tags=["metrics"])
     app.include_router(training.router, prefix="/api/v1", tags=["training"])
     app.include_router(graphs.router, prefix="/api/v1", tags=["graphs"])
+    app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
 
     # Root endpoint
     @app.get("/")
