@@ -23,6 +23,15 @@ from .froc import (
     compute_sensitivity_at_fppi,
     match_detections_to_ground_truth,
 )
+from .size_accuracy import (
+    calculate_mae,
+    calculate_rmse,
+    calculate_size_metrics,
+    compute_diameter_error,
+    compute_diameter_from_mask,
+    compute_volume_error,
+    compute_volume_from_mask,
+)
 
 __all__ = [
     "Detection",
@@ -41,4 +50,11 @@ __all__ = [
     "CenterMatch",
     "compute_center_distance",
     "calculate_accuracy_metrics",
+    "compute_volume_from_mask",
+    "compute_diameter_from_mask",
+    "compute_volume_error",
+    "compute_diameter_error",
+    "calculate_mae",
+    "calculate_rmse",
+    "calculate_size_metrics",
 ]
