@@ -46,6 +46,27 @@ def get_session_manager() -> TrainingSessionManager:
     return _session_manager
 
 
+def get_latest_session_id(manager: TrainingSessionManager) -> str:
+    """Get the ID of the most recently created session.
+
+    Args:
+        manager: TrainingSessionManager instance
+
+    Returns:
+        Session ID of the latest session
+
+    Raises:
+        HTTPException: If no sessions exist
+    """
+    sessions = manager.list_sessions()
+    if not sessions:
+        raise HTTPException(status_code=404, detail="No sessions found")
+
+    # Sort by created_at timestamp and return the most recent
+    latest = max(sessions, key=lambda s: s.created_at)
+    return latest.session_id
+
+
 class EpochInfo(BaseModel):
     """Model for epoch information.
 
@@ -80,6 +101,25 @@ class EpochsResponse(BaseModel):
     completed_epochs: int
     current_epoch: int
     epochs: list[EpochInfo]
+
+
+@router.get("/epochs", response_model=EpochsResponse)
+async def get_epochs_no_session() -> EpochsResponse:
+    """Get epoch information for the most recent training session.
+
+    Returns:
+        EpochsResponse containing epoch-by-epoch information
+
+    Raises:
+        HTTPException: If session manager not initialized or no sessions exist
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    session_id = get_latest_session_id(manager)
+    return await get_epochs(session_id=session_id)
 
 
 @router.get("/epochs/{session_id}", response_model=EpochsResponse)
