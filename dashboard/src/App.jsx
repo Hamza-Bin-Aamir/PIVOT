@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { healthService } from './api/services';
 import ConfigPanel from './components/ConfigPanel';
 import MetricsPanel from './components/MetricsPanel';
+import LogsPanel from './components/LogsPanel';
 import './App.css';
 
 function App() {
@@ -48,12 +49,7 @@ function App() {
       <main className="app-main">
         {activeTab === 'config' && <ConfigPanel />}
         {activeTab === 'metrics' && <MetricsPanel />}
-        {activeTab === 'logs' && (
-          <div className="panel">
-            <h2>Training Logs</h2>
-            <p>Logs panel will be added in Issue #104</p>
-          </div>
-        )}
+        {activeTab === 'logs' && <LogsPanel />}
       </main>
     </div>
   );
