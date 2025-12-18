@@ -13,7 +13,7 @@ TensorLike = torch.Tensor
 class Compose:
     """Compose multiple augmentation transforms into a single callable."""
 
-    def __init__(self, transforms: Iterable):
+    def __init__(self, transforms: Iterable) -> None:
         self.transforms = list(transforms)
 
     def __call__(self, tensor: TensorLike) -> TensorLike:
@@ -26,7 +26,7 @@ class Compose:
 class RandomFlip3D:
     """Randomly flip a 3D volume across spatial dimensions."""
 
-    def __init__(self, prob: float = 0.5, dims: Sequence[int] = (1, 2, 3)):
+    def __init__(self, prob: float = 0.5, dims: Sequence[int] = (1, 2, 3)) -> None:
         if not 0.0 <= prob <= 1.0:
             msg = f"Probability must lie in [0, 1], got {prob}"
             raise ValueError(msg)
@@ -49,7 +49,7 @@ class RandomFlip3D:
 class RandomRotate90:
     """Randomly rotate a 3D volume in 90° increments."""
 
-    def __init__(self, prob: float = 0.5):
+    def __init__(self, prob: float = 0.5) -> None:
         if not 0.0 <= prob <= 1.0:
             msg = f"Probability must lie in [0, 1], got {prob}"
             raise ValueError(msg)
@@ -66,8 +66,8 @@ class RandomRotate90:
             return result
 
         axis_idx = torch.randint(len(self.axes), (1,), device=result.device).item()
-        k = torch.randint(1, 4, (1,), device=result.device).item()
-        axes = self.axes[axis_idx]
+        k = int(torch.randint(1, 4, (1,), device=result.device).item())
+        axes = self.axes[int(axis_idx)]
         rotated = torch.rot90(result, k=k, dims=axes)
         # Restore canonical axis order (C, D, H, W) after rotation swaps dims.
         dims_order = list(range(rotated.ndim))
@@ -78,7 +78,7 @@ class RandomRotate90:
 class RandomGaussianNoise:
     """Inject Gaussian noise into a 3D tensor."""
 
-    def __init__(self, prob: float = 0.15, mean: float = 0.0, std: float = 0.01):
+    def __init__(self, prob: float = 0.15, mean: float = 0.0, std: float = 0.01) -> None:
         if not 0.0 <= prob <= 1.0:
             msg = f"Probability must lie in [0, 1], got {prob}"
             raise ValueError(msg)
@@ -104,7 +104,7 @@ class RandomIntensityScale:
         prob: float = 0.2,
         scale_range: tuple[float, float] = (0.9, 1.1),
         shift_range: tuple[float, float] = (-0.05, 0.05),
-    ):
+    ) -> None:
         if not 0.0 <= prob <= 1.0:
             msg = f"Probability must lie in [0, 1], got {prob}"
             raise ValueError(msg)

@@ -97,10 +97,13 @@ class BCELoss(nn.Module):
 
         if self.from_logits:
             # Use BCEWithLogitsLoss for numerical stability
+            pos_weight_tensor = (
+                self.pos_weight if isinstance(self.pos_weight, torch.Tensor) else None
+            )
             loss = F.binary_cross_entropy_with_logits(
                 predictions,
                 targets,
-                pos_weight=self.pos_weight,
+                pos_weight=pos_weight_tensor,
                 reduction=self.reduction,
             )
         else:
@@ -109,8 +112,13 @@ class BCELoss(nn.Module):
                 # Manual pos_weight application for BCE
                 # BCE = -[y*log(p) + (1-y)*log(1-p)]
                 # With pos_weight: -[w*y*log(p) + (1-y)*log(1-p)]
+                pos_weight_value = (
+                    self.pos_weight
+                    if isinstance(self.pos_weight, torch.Tensor)
+                    else torch.tensor(self.pos_weight)
+                )
                 loss = -(
-                    self.pos_weight * targets * torch.log(predictions + 1e-7)
+                    pos_weight_value * targets * torch.log(predictions + 1e-7)
                     + (1 - targets) * torch.log(1 - predictions + 1e-7)
                 )
             else:

@@ -4,6 +4,11 @@ train:
   data_dir: "data/processed"
   batch_size: 2
   num_workers: 4
+  pin_memory: true  # Pin memory for faster GPU transfer
+  patch_size: [96, 96, 96]  # Patch size for training (D, H, W)
+  patches_per_volume: 16  # Number of patches to sample per volume per epoch
+  positive_fraction: 0.5  # Fraction of patches centered on nodules
+  cache_size: 4  # Number of volumes to keep in memory cache
 
   # Model settings
   model:
@@ -17,6 +22,12 @@ train:
   epochs: 100
   learning_rate: 0.0001
   weight_decay: 0.00001
+  precision: "32"  # Options: "32" (FP32), "16-mixed" (FP16), "bf16-mixed" (BF16)
+
+  # Hard negative mining (for center detection)
+  use_hard_negative_mining: false  # Enable Online Hard Example Mining (OHEM)
+  hard_negative_ratio: 3.0  # Ratio of hard negatives to positives
+  min_negative_samples: 100  # Minimum hard negatives to mine
 
   # Optimizer settings
   optimizer:

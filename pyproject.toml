@@ -24,6 +24,7 @@ select = [
     "UP",     # pyupgrade
     "ARG",    # flake8-unused-arguments
     "SIM",    # flake8-simplify
+    "ANN",    # flake8-annotations
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
@@ -33,7 +34,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Unused imports in __init__.py
-"tests/**/*.py" = ["ARG", "S101"]  # Allow assert and unused args in tests
+"tests/**/*.py" = ["ARG", "S101", "ANN"]  # Allow assert, unused args, and no type annotations in tests
 
 [tool.ruff.format]
 quote-style = "double"
@@ -126,6 +127,7 @@ dependencies = [
     "uvicorn>=0.24.0",
     "pydantic>=2.5.0",
     "lightning>=2.1.0",
+    "mypy>=1.19.0",
 ]
 
 [project.optional-dependencies]
@@ -193,6 +195,7 @@ dev = [
     "jupyter>=1.0.0",
     "jupyterlab>=4.0.0",
     "pre-commit>=3.6.0",
+    "types-pyyaml>=6.0.12.20250915",
 ]
 
 [tool.uv]

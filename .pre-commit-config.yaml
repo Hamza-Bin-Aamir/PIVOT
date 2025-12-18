@@ -21,14 +21,35 @@ repos:
       - id: check-toml
       - id: mixed-line-ending
 
-
-
-  # Python formatting and linting with Ruff (replaces black, isort, flake8)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.9
+  # Ruff type check
+  - repo: local
     hooks:
-      # Run the linter
-      - id: ruff
-        args: [--fix]
-      # Run the formatter
-      - id: ruff-format
+    -   id: ruff-check
+        name: ruff-check
+        entry: uv run ruff check
+        language: system
+        types: [python]
+
+  # Type checking with mypy
+  - repo: local
+    hooks:
+    -   id: mypy
+        name: mypy
+        # This uses the mypy inside your current uv venv
+        entry: uv run mypy src/
+        language: system
+        types: [python]
+        # Mypy often needs to scan the whole project to work correctly
+        pass_filenames: false
+
+
+  # pytest
+  - repo: local
+    hooks:
+    -   id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

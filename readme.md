@@ -220,6 +220,7 @@ output_dir: outputs
 train:
   epochs: 100
   batch_size: 2
+  precision: "32"  # Options: "32" (FP32), "16-mixed" (FP16), "bf16-mixed" (BF16)
 
   model:
     type: unet3d
@@ -232,7 +233,6 @@ train:
 
   hardware:
     device: cuda  # cuda, rocm, xpu, cpu
-    mixed_precision: true
     seed: 42
 
 inference:
@@ -240,6 +240,67 @@ inference:
   overlap: 0.5
   threshold: 0.5
 ```
+
+#### Mixed Precision Training
+
+PIVOT supports mixed precision training for faster training and reduced memory usage:
+
+- **`"32"`** (default): Full FP32 precision - most stable, slowest
+- **`"16-mixed"`**: Mixed precision FP16 - 2-3x faster on NVIDIA GPUs
+- **`"bf16-mixed"`**: Mixed precision BF16 - recommended for AMD/Intel GPUs, more stable than FP16
+
+Example configuration:
+```yaml
+train:
+  precision: "16-mixed"  # For NVIDIA GPUs
+```
+
+Or in code:
+```python
+from src.train import LitNoduleDetection
+import lightning as L
+
+model = LitNoduleDetection(precision="16-mixed")
+trainer = L.Trainer(max_epochs=100, precision="16-mixed")
+trainer.fit(model, train_dataloader, val_dataloader)
+```
+
+#### Hard Negative Mining
+
+PIVOT implements Online Hard Example Mining (OHEM) to address the extreme class imbalance in center detection, where background voxels vastly outnumber nodule centers.
+
+**Benefits:**
+- Focuses training on hardest negative examples
+- Reduces influence of easy background voxels
+- Improves center detection accuracy
+- Automatic positive/negative ratio balancing
+
+**Configuration:**
+```yaml
+train:
+  use_hard_negative_mining: true  # Enable OHEM
+  hard_negative_ratio: 3.0  # Mine 3x negatives per positive
+  min_negative_samples: 100  # Minimum negatives to mine
+```
+
+**In Code:**
+```python
+from src.train import LitNoduleDetection
+
+# Enable hard negative mining
+model = LitNoduleDetection(
+    use_hard_negative_mining=True,
+    hard_negative_ratio=3.0,  # 3 hard negatives per positive
+    min_negative_samples=100
+)
+
+trainer.fit(model, train_dataloader, val_dataloader)
+```
+
+**Recommended Settings:**
+- **Development/Testing:** `use_hard_negative_mining=false` (faster)
+- **Production Training:** `use_hard_negative_mining=true, hard_negative_ratio=3.0-5.0`
+- **High Performance:** `use_hard_negative_mining=true, hard_negative_ratio=4.0-5.0, min_negative_samples=200`
 
 See **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** for complete documentation.
 

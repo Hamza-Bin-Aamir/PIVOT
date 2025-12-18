@@ -46,7 +46,7 @@ class TrainConfig:
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         if self.epochs < 1:
             raise ValueError("epochs must be >= 1")

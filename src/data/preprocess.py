@@ -39,7 +39,7 @@ def resample_to_isotropic(
     resample.SetDefaultPixelValue(image.GetPixelIDValue())
     resample.SetInterpolator(interpolator)
 
-    return resample.Execute(image)
+    return resample.Execute(image)  # type: ignore[no-any-return]
 
 
 def apply_hu_windowing(
@@ -119,12 +119,12 @@ def preprocess_ct_scan(
     }
 
     if return_stats:
-        return normalize_intensity(array, return_stats=True, **kwargs)
+        return normalize_intensity(array, return_stats=True, **kwargs)  # type: ignore[arg-type]
 
-    return normalize_intensity(array, return_stats=False, **kwargs)
+    return normalize_intensity(array, return_stats=False, **kwargs)  # type: ignore[arg-type]
 
 
-def main():
+def main() -> None:
     """Entry point for preprocessing script."""
     import argparse
 

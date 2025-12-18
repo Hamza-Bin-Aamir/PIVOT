@@ -8,7 +8,7 @@ from pathlib import Path
 from src.config import Config, ConfigLoader, get_default_train_config
 
 
-def validate_config(args):
+def validate_config(args: argparse.Namespace) -> int:
     """Validate a configuration file."""
     try:
         config = Config.from_yaml(args.config)
@@ -25,7 +25,7 @@ def validate_config(args):
         return 1
 
 
-def create_config(args):
+def create_config(args: argparse.Namespace) -> int:
     """Create a new configuration file from template."""
     templates = {
         "default": get_default_train_config,
@@ -52,7 +52,7 @@ def create_config(args):
         return 1
 
 
-def merge_configs(args):
+def merge_configs(args: argparse.Namespace) -> int:
     """Merge multiple configuration files."""
     try:
         base = ConfigLoader.load_yaml(args.base)
@@ -72,7 +72,7 @@ def merge_configs(args):
         return 1
 
 
-def show_config(args):
+def show_config(args: argparse.Namespace) -> int:
     """Display configuration in human-readable format."""
     try:
         config = Config.from_yaml(args.config)
@@ -144,7 +144,7 @@ def show_config(args):
         return 1
 
 
-def list_templates(_args):
+def list_templates(_args: argparse.Namespace) -> int:
     """List available configuration templates."""
     configs_dir = Path("configs")
     templates = list(configs_dir.glob("*.yaml"))
@@ -168,7 +168,7 @@ def list_templates(_args):
     return 0
 
 
-def main():
+def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         description="Configuration management for PIVOT",

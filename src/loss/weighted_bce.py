@@ -73,7 +73,7 @@ class WeightedBCELoss(nn.Module):
         neg_weight: float | torch.Tensor = 1.0,
         from_logits: bool = True,
         reduction: str = "mean",
-    ):
+    ) -> None:
         super().__init__()
 
         # Validate reduction

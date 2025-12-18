@@ -314,3 +314,464 @@ class TestLitNoduleDetection:
         assert log_calls[0][1] == 1e-3
         assert log_calls[0][2]["on_step"] is False
         assert log_calls[0][2]["on_epoch"] is True
+
+
+class TestMixedPrecisionTraining:
+    """Test suite for mixed precision training functionality."""
+
+    def test_precision_default_fp32(self):
+        """Test default precision is FP32."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.precision == "32"
+        assert model.precision == "32"
+
+    def test_precision_fp16_mixed(self):
+        """Test FP16 mixed precision initialization."""
+        model = LitNoduleDetection(precision="16-mixed")
+
+        assert model.hparams.precision == "16-mixed"
+        assert model.precision == "16-mixed"
+
+    def test_precision_bf16_mixed(self):
+        """Test BF16 mixed precision initialization."""
+        model = LitNoduleDetection(precision="bf16-mixed")
+
+        assert model.hparams.precision == "bf16-mixed"
+        assert model.precision == "bf16-mixed"
+
+    def test_precision_invalid_value(self):
+        """Test that invalid precision values raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid precision"):
+            LitNoduleDetection(precision="invalid")
+
+        with pytest.raises(ValueError, match="Invalid precision"):
+            LitNoduleDetection(precision="16")
+
+        with pytest.raises(ValueError, match="Invalid precision"):
+            LitNoduleDetection(precision="bf16")
+
+    def test_precision_valid_values_accepted(self):
+        """Test that all valid precision values are accepted."""
+        valid_precisions = ["32", "16-mixed", "bf16-mixed"]
+
+        for precision in valid_precisions:
+            model = LitNoduleDetection(precision=precision)
+            assert model.precision == precision
+
+    def test_precision_preserved_in_hparams(self):
+        """Test that precision is saved in hyperparameters."""
+        model = LitNoduleDetection(precision="16-mixed")
+
+        # Precision should be in hparams for checkpointing
+        assert "precision" in model.hparams
+        assert model.hparams.precision == "16-mixed"
+
+    def test_forward_with_fp16_mixed(self):
+        """Test forward pass works with FP16 mixed precision."""
+        model = LitNoduleDetection(precision="16-mixed")
+
+        # Use smaller batch/volume to avoid memory issues in tests
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        predictions = model(x)
+
+        # Verify outputs are generated correctly
+        assert isinstance(predictions, dict)
+        assert "segmentation" in predictions
+        assert "center" in predictions
+        assert "size" in predictions
+        assert "triage" in predictions
+
+    def test_forward_with_bf16_mixed(self):
+        """Test forward pass works with BF16 mixed precision."""
+        model = LitNoduleDetection(precision="bf16-mixed")
+
+        x = torch.randn(1, 1, 32, 32, 32)
+
+        predictions = model(x)
+
+        # Verify outputs are generated correctly
+        assert isinstance(predictions, dict)
+        assert "segmentation" in predictions
+        assert "center" in predictions
+        assert "size" in predictions
+        assert "triage" in predictions
+
+    def test_training_step_with_fp16_mixed(self):
+        """Test training step with FP16 mixed precision."""
+        model = LitNoduleDetection(precision="16-mixed")
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        # Verify loss is computed correctly
+        assert isinstance(loss, torch.Tensor)
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+        assert not torch.isinf(loss)
+
+    def test_training_step_with_bf16_mixed(self):
+        """Test training step with BF16 mixed precision."""
+        model = LitNoduleDetection(precision="bf16-mixed")
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        # Verify loss is computed correctly
+        assert isinstance(loss, torch.Tensor)
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+        assert not torch.isinf(loss)
+
+    def test_validation_step_with_mixed_precision(self):
+        """Test validation step with mixed precision."""
+        model = LitNoduleDetection(precision="16-mixed")
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.validation_step(batch, 0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.item() >= 0
+
+    def test_test_step_with_mixed_precision(self):
+        """Test test step with mixed precision."""
+        model = LitNoduleDetection(precision="bf16-mixed")
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.test_step(batch, 0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.item() >= 0
+
+    def test_precision_with_custom_model_params(self):
+        """Test that precision works with custom model parameters."""
+        model = LitNoduleDetection(
+            model_depth=5,
+            init_features=64,
+            precision="16-mixed",
+        )
+
+        assert model.hparams.model_depth == 5
+        assert model.hparams.init_features == 64
+        assert model.hparams.precision == "16-mixed"
+
+        # Model should still be created correctly
+        # Use larger input for depth=5 model to avoid BatchNorm issues
+        x = torch.randn(1, 1, 64, 64, 64)
+        predictions = model(x)
+        assert predictions["segmentation"].shape == (1, 1, 64, 64, 64)
+
+    def test_precision_with_custom_loss_weights(self):
+        """Test that precision works with custom loss weights."""
+        model = LitNoduleDetection(
+            seg_weight=2.0,
+            center_weight=1.5,
+            precision="bf16-mixed",
+        )
+
+        assert model.hparams.seg_weight == 2.0
+        assert model.hparams.center_weight == 1.5
+        assert model.hparams.precision == "bf16-mixed"
+
+    def test_optimizer_config_with_mixed_precision(self):
+        """Test that optimizer configuration works with mixed precision."""
+        model = LitNoduleDetection(
+            learning_rate=1e-3,
+            weight_decay=1e-4,
+            precision="16-mixed",
+        )
+
+        config = model.configure_optimizers()
+
+        # Optimizer should be configured normally
+        assert "optimizer" in config
+        assert "lr_scheduler" in config
+        assert config["optimizer"].param_groups[0]["lr"] == 1e-3
+        assert config["optimizer"].param_groups[0]["weight_decay"] == 1e-4
+
+    def test_backward_pass_with_fp16_mixed(self):
+        """Test that backward pass works with FP16 mixed precision."""
+        model = LitNoduleDetection(precision="16-mixed")
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        # Verify backward pass doesn't crash
+        loss.backward()
+
+        # Verify gradients are computed
+        has_gradients = any(p.grad is not None for p in model.parameters() if p.requires_grad)
+        assert has_gradients
+
+    def test_backward_pass_with_bf16_mixed(self):
+        """Test that backward pass works with BF16 mixed precision."""
+        model = LitNoduleDetection(precision="bf16-mixed")
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        # Verify backward pass doesn't crash
+        loss.backward()
+
+        # Verify gradients are computed
+        has_gradients = any(p.grad is not None for p in model.parameters() if p.requires_grad)
+        assert has_gradients
+
+    def test_precision_numerical_stability(self):
+        """Test that mixed precision produces reasonable loss values."""
+        torch.manual_seed(42)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        # Test FP32
+        torch.manual_seed(42)
+        model_fp32 = LitNoduleDetection(precision="32")
+        loss_fp32 = model_fp32.training_step(batch, 0)
+
+        # Test FP16
+        torch.manual_seed(42)
+        model_fp16 = LitNoduleDetection(precision="16-mixed")
+        loss_fp16 = model_fp16.training_step(batch, 0)
+
+        # Test BF16
+        torch.manual_seed(42)
+        model_bf16 = LitNoduleDetection(precision="bf16-mixed")
+        loss_bf16 = model_bf16.training_step(batch, 0)
+
+        # All losses should be finite and positive
+        assert torch.isfinite(loss_fp32)
+        assert torch.isfinite(loss_fp16)
+        assert torch.isfinite(loss_bf16)
+        assert loss_fp32.item() > 0
+        assert loss_fp16.item() > 0
+        assert loss_bf16.item() > 0
+
+    def test_precision_case_sensitive(self):
+        """Test that precision parameter is case-sensitive."""
+        # Valid lowercase values should work
+        model = LitNoduleDetection(precision="32")
+        assert model.precision == "32"
+
+        # Uppercase should fail
+        with pytest.raises(ValueError):
+            LitNoduleDetection(precision="FP32")
+
+        with pytest.raises(ValueError):
+            LitNoduleDetection(precision="16-MIXED")
+
+        with pytest.raises(ValueError):
+            LitNoduleDetection(precision="BF16-MIXED")
+
+
+class TestHardNegativeMiningIntegration:
+    """Test suite for hard negative mining integration in training module."""
+
+    def test_init_with_hard_negative_mining_disabled(self):
+        """Test initialization with hard negative mining disabled (default)."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.use_hard_negative_mining is False
+        assert not hasattr(model, "hard_negative_ratio") or model.hparams.hard_negative_ratio == 3.0
+
+    def test_init_with_hard_negative_mining_enabled(self):
+        """Test initialization with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True)
+
+        assert model.hparams.use_hard_negative_mining is True
+        assert model.use_hard_negative_mining is True
+
+    def test_init_with_custom_hard_negative_ratio(self):
+        """Test initialization with custom hard negative ratio."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True, hard_negative_ratio=5.0, min_negative_samples=200
+        )
+
+        assert model.hparams.use_hard_negative_mining is True
+        assert model.hparams.hard_negative_ratio == 5.0
+        assert model.hparams.min_negative_samples == 200
+
+    def test_init_invalid_hard_negative_ratio(self):
+        """Test that invalid hard_negative_ratio raises ValueError."""
+        with pytest.raises(ValueError, match="hard_negative_ratio must be positive"):
+            LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=0.0)
+
+        with pytest.raises(ValueError, match="hard_negative_ratio must be positive"):
+            LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=-1.0)
+
+    def test_init_invalid_min_negative_samples(self):
+        """Test that invalid min_negative_samples raises ValueError."""
+        with pytest.raises(ValueError, match="min_negative_samples must be >= 0"):
+            LitNoduleDetection(use_hard_negative_mining=True, min_negative_samples=-1)
+
+    def test_center_loss_wrapped_when_enabled(self):
+        """Test that center loss is wrapped with HardNegativeMiningLoss when enabled."""
+        from src.loss.hard_negative_mining import HardNegativeMiningLoss
+
+        model = LitNoduleDetection(use_hard_negative_mining=True)
+
+        # Center loss should be wrapped
+        assert isinstance(model.loss_fn.center_loss, HardNegativeMiningLoss)
+
+    def test_center_loss_not_wrapped_when_disabled(self):
+        """Test that center loss is not wrapped when hard negative mining is disabled."""
+        from src.loss.focal import FocalLoss
+        from src.loss.hard_negative_mining import HardNegativeMiningLoss
+
+        model = LitNoduleDetection(use_hard_negative_mining=False)
+
+        # Center loss should be original FocalLoss, not wrapped
+        assert isinstance(model.loss_fn.center_loss, FocalLoss)
+        assert not isinstance(model.loss_fn.center_loss, HardNegativeMiningLoss)
+
+    def test_training_step_with_hard_negative_mining(self):
+        """Test training step with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=3.0)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
+
+    def test_validation_step_with_hard_negative_mining(self):
+        """Test validation step with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=3.0)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.validation_step(batch, 0)
+
+        assert isinstance(loss, torch.Tensor)
+        assert loss.item() >= 0
+
+    def test_backward_pass_with_hard_negative_mining(self):
+        """Test backward pass with hard negative mining enabled."""
+        model = LitNoduleDetection(use_hard_negative_mining=True, hard_negative_ratio=3.0)
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+        loss.backward()
+
+        # Verify gradients are computed
+        has_gradients = any(p.grad is not None for p in model.parameters() if p.requires_grad)
+        assert has_gradients
+
+    def test_hard_negative_mining_with_mixed_precision(self):
+        """Test hard negative mining works with mixed precision."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True, hard_negative_ratio=3.0, precision="16-mixed"
+        )
+
+        assert model.use_hard_negative_mining is True
+        assert model.precision == "16-mixed"
+
+        batch = {
+            "image": torch.randn(1, 1, 32, 32, 32),
+            "segmentation": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "center": torch.randint(0, 2, (1, 1, 32, 32, 32)).float(),
+            "size": torch.randn(1, 3, 1, 1, 1),
+            "triage": torch.randint(0, 2, (1, 1, 1, 1, 1)).float(),
+        }
+
+        loss = model.training_step(batch, 0)
+
+        assert torch.isfinite(loss)
+
+    def test_hard_negative_mining_with_custom_loss_weights(self):
+        """Test hard negative mining with custom task weights."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True,
+            hard_negative_ratio=4.0,
+            center_weight=2.0,
+            seg_weight=1.5,
+        )
+
+        assert model.hparams.center_weight == 2.0
+        assert model.hparams.seg_weight == 1.5
+        assert model.use_hard_negative_mining is True
+
+    def test_hyperparameter_saving_with_hard_negative_mining(self):
+        """Test that hard negative mining params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            use_hard_negative_mining=True, hard_negative_ratio=5.0, min_negative_samples=250
+        )
+
+        assert "use_hard_negative_mining" in model.hparams
+        assert "hard_negative_ratio" in model.hparams
+        assert "min_negative_samples" in model.hparams
+        assert model.hparams.use_hard_negative_mining is True
+        assert model.hparams.hard_negative_ratio == 5.0
+        assert model.hparams.min_negative_samples == 250

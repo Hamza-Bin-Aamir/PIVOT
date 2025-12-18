@@ -14,6 +14,11 @@ train:
   data_dir: data/processed
   batch_size: 1
   num_workers: 0  # Disable multiprocessing for debugging
+  pin_memory: false  # Don't pin memory for CPU development
+  patch_size: [64, 64, 64]  # Smaller patches for faster training
+  patches_per_volume: 8  # Fewer patches for quick epochs
+  positive_fraction: 0.5
+  cache_size: 2  # Small cache for development
 
   # Model
   model:
