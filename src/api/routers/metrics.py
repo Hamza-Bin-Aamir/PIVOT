@@ -1,0 +1,364 @@
+"""Metrics endpoint for retrieving training metrics.
+
+This module provides API endpoints for accessing training and validation metrics,
+including comprehensive metrics history and aggregated statistics.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from ..session_manager import TrainingSessionManager
+
+router = APIRouter()
+
+# Global session manager instance
+_session_manager: TrainingSessionManager | None = None
+
+
+def set_session_manager(manager: TrainingSessionManager) -> None:
+    """Set the global session manager instance.
+
+    Args:
+        manager: TrainingSessionManager instance to use
+
+    Raises:
+        ValueError: If manager is None
+    """
+    global _session_manager  # noqa: PLW0603
+    if manager is None:
+        raise ValueError("Session manager cannot be None")
+    _session_manager = manager
+
+
+def get_session_manager() -> TrainingSessionManager:
+    """Get the global session manager instance.
+
+    Returns:
+        TrainingSessionManager instance
+
+    Raises:
+        RuntimeError: If session manager not initialized
+    """
+    if _session_manager is None:
+        raise RuntimeError("Session manager not initialized")
+    return _session_manager
+
+
+def get_latest_session_id(manager: TrainingSessionManager) -> str:
+    """Get the ID of the most recently created session.
+
+    Args:
+        manager: TrainingSessionManager instance
+
+    Returns:
+        Session ID of the latest session
+
+    Raises:
+        HTTPException: If no sessions exist
+    """
+    sessions = manager.list_sessions()
+    if not sessions:
+        raise HTTPException(status_code=404, detail="No sessions found")
+
+    # Sort by created_at timestamp and return the most recent
+    latest = max(sessions, key=lambda s: s.created_at)
+    return latest.session_id
+
+
+class MetricPoint(BaseModel):
+    """Model for a single metric data point.
+
+    Attributes:
+        epoch: Epoch number
+        step: Training step number
+        value: Metric value
+        timestamp: ISO timestamp when metric was recorded
+    """
+
+    epoch: int
+    step: int
+    value: float
+    timestamp: str
+
+
+class MetricSeries(BaseModel):
+    """Model for a metric time series.
+
+    Attributes:
+        name: Metric name (e.g., 'loss', 'accuracy')
+        values: List of metric data points
+        latest_value: Most recent metric value
+        min_value: Minimum value in the series
+        max_value: Maximum value in the series
+        mean_value: Mean value across the series
+    """
+
+    name: str
+    values: list[MetricPoint]
+    latest_value: float | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    mean_value: float | None = None
+
+
+class MetricsResponse(BaseModel):
+    """Response model for metrics endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        train_metrics: Training metrics by name
+        val_metrics: Validation metrics by name
+        total_metrics: Total number of unique metrics
+    """
+
+    session_id: str
+    experiment_name: str
+    train_metrics: dict[str, MetricSeries]
+    val_metrics: dict[str, MetricSeries]
+    total_metrics: int
+
+
+class LatestMetricsResponse(BaseModel):
+    """Response model for latest metrics endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        epoch: Current epoch number
+        step: Current training step
+        train_metrics: Latest training metric values by name
+        val_metrics: Latest validation metric values by name
+        timestamp: ISO timestamp of latest metrics
+    """
+
+    session_id: str
+    experiment_name: str
+    epoch: int
+    step: int
+    train_metrics: dict[str, float]
+    val_metrics: dict[str, float]
+    timestamp: str
+
+
+class MetricsHistoryResponse(BaseModel):
+    """Response model for metrics history endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        metric_name: Name of the requested metric
+        metric_type: Type of metric ('train' or 'val')
+        history: List of metric data points in chronological order
+        total_points: Total number of data points
+    """
+
+    session_id: str
+    experiment_name: str
+    metric_name: str
+    metric_type: str
+    history: list[MetricPoint]
+    total_points: int
+
+
+@router.get("/metrics/latest", response_model=LatestMetricsResponse)
+async def get_latest_metrics_no_session() -> LatestMetricsResponse:
+    """Get the most recent metrics from the latest training session.
+
+    Returns:
+        LatestMetricsResponse containing most recent metric values
+
+    Raises:
+        HTTPException: If session manager not initialized or no sessions exist
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    session_id = get_latest_session_id(manager)
+    return await get_latest_metrics(session_id=session_id)
+
+
+@router.get(
+    "/metrics/history/{metric_type}/{metric_name}",
+    response_model=MetricsHistoryResponse,
+)
+async def get_metrics_history_no_session(
+    metric_type: str,
+    metric_name: str,
+) -> MetricsHistoryResponse:
+    """Get the complete history for a specific metric from the latest session.
+
+    Args:
+        metric_type: Type of metric ('train' or 'val')
+        metric_name: Name of the metric (e.g., 'loss', 'accuracy')
+
+    Returns:
+        MetricsHistoryResponse containing complete metric history
+
+    Raises:
+        HTTPException: If session manager not initialized, no sessions exist,
+                      or invalid metric type
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    session_id = get_latest_session_id(manager)
+    return await get_metrics_history(metric_type, metric_name, session_id=session_id)
+
+
+@router.get("/metrics", response_model=MetricsResponse)
+async def get_metrics_no_session() -> MetricsResponse:
+    """Get all metrics for the most recent training session.
+
+    Returns:
+        MetricsResponse containing all training and validation metrics
+
+    Raises:
+        HTTPException: If session manager not initialized or no sessions exist
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    session_id = get_latest_session_id(manager)
+    return await get_metrics(session_id=session_id)
+
+
+@router.get("/metrics/{session_id}", response_model=MetricsResponse)
+async def get_metrics(session_id: str) -> MetricsResponse:
+    """Get all metrics for a training session.
+
+    Args:
+        session_id: Training session ID
+
+    Returns:
+        MetricsResponse containing all training and validation metrics
+
+    Raises:
+        HTTPException: If session manager not initialized or session not found
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # For now, return empty metrics since we don't have metrics tracking yet
+    # This will be populated when we integrate with metrics collector
+    train_metrics: dict[str, MetricSeries] = {}
+    val_metrics: dict[str, MetricSeries] = {}
+
+    return MetricsResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        train_metrics=train_metrics,
+        val_metrics=val_metrics,
+        total_metrics=len(train_metrics) + len(val_metrics),
+    )
+
+
+@router.get("/metrics/{session_id}/latest", response_model=LatestMetricsResponse)
+@router.get("/metrics/latest", response_model=LatestMetricsResponse)
+async def get_latest_metrics(session_id: str | None = None) -> LatestMetricsResponse:
+    """Get the latest metrics for a training session.
+@router.get("/metrics/{session_id}/latest", response_model=LatestMetricsResponse)
+async def get_latest_metrics(session_id: str) -> LatestMetricsResponse:
+
+    Returns:
+        LatestMetricsResponse containing most recent metric values
+
+    Raises:
+        HTTPException: If session manager not initialized or session not found
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    # Use latest session if session_id not provided
+    if session_id is None:
+        session_id = get_latest_session_id(manager)
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # For now, return empty metrics since we don't have metrics tracking yet
+    # This will be populated when we integrate with metrics collector
+    from datetime import datetime
+
+    return LatestMetricsResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        epoch=0,
+        step=0,
+        train_metrics={},
+        val_metrics={},
+        timestamp=datetime.now().isoformat(),
+    )
+
+
+@router.get(
+    "/metrics/{session_id}/history/{metric_type}/{metric_name}",
+    response_model=MetricsHistoryResponse,
+)
+async def get_metrics_history(
+    metric_type: str,
+    metric_name: str,
+    session_id: str,
+) -> MetricsHistoryResponse:
+    """Get the complete history for a specific metric.
+
+    Args:
+        metric_type: Type of metric ('train' or 'val')
+        metric_name: Name of the metric (e.g., 'loss', 'accuracy')
+        session_id: Training session ID
+
+    Returns:
+        MetricsHistoryResponse containing complete metric history
+
+    Raises:
+        HTTPException: If session manager not initialized, session not found,
+                      or invalid metric type
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # Validate metric type
+    if metric_type not in ("train", "val"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid metric_type '{metric_type}'. Must be 'train' or 'val'",
+        )
+
+    # For now, return empty history since we don't have metrics tracking yet
+    # This will be populated when we integrate with metrics collector
+    history: list[MetricPoint] = []
+
+    return MetricsHistoryResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        metric_name=metric_name,
+        metric_type=metric_type,
+        history=history,
+        total_points=len(history),
+    )
