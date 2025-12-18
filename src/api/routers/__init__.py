@@ -1,3 +1,3 @@
 """API routers for different endpoint groups."""
 
-__all__ = ["health"]
+__all__ = ["health", "status"]
