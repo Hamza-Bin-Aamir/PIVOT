@@ -29,6 +29,7 @@ from .pipeline import (
     EvaluationResults,
     GroundTruth,
 )
+from .report import generate_performance_report
 from .size_accuracy import (
     calculate_mae,
     calculate_rmse,
@@ -85,4 +86,6 @@ __all__ = [
     "GroundTruth",
     "EvaluationPipeline",
     "EvaluationResults",
+    # Report
+    "generate_performance_report",
 ]
