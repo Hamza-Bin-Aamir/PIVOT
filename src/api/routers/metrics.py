@@ -122,6 +122,26 @@ class LatestMetricsResponse(BaseModel):
     timestamp: str
 
 
+class MetricsHistoryResponse(BaseModel):
+    """Response model for metrics history endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        metric_name: Name of the requested metric
+        metric_type: Type of metric ('train' or 'val')
+        history: List of metric data points in chronological order
+        total_points: Total number of data points
+    """
+
+    session_id: str
+    experiment_name: str
+    metric_name: str
+    metric_type: str
+    history: list[MetricPoint]
+    total_points: int
+
+
 @router.get("/metrics/{session_id}", response_model=MetricsResponse)
 async def get_metrics(session_id: str) -> MetricsResponse:
     """Get all metrics for a training session.
@@ -194,4 +214,56 @@ async def get_latest_metrics(session_id: str) -> LatestMetricsResponse:
         train_metrics={},
         val_metrics={},
         timestamp=datetime.now().isoformat(),
+    )
+
+
+@router.get(
+    "/metrics/{session_id}/history/{metric_type}/{metric_name}",
+    response_model=MetricsHistoryResponse,
+)
+async def get_metrics_history(
+    session_id: str, metric_type: str, metric_name: str
+) -> MetricsHistoryResponse:
+    """Get the complete history for a specific metric.
+
+    Args:
+        session_id: Training session ID
+        metric_type: Type of metric ('train' or 'val')
+        metric_name: Name of the metric (e.g., 'loss', 'accuracy')
+
+    Returns:
+        MetricsHistoryResponse containing complete metric history
+
+    Raises:
+        HTTPException: If session manager not initialized, session not found,
+                      or invalid metric type
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # Validate metric type
+    if metric_type not in ("train", "val"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid metric_type '{metric_type}'. Must be 'train' or 'val'",
+        )
+
+    # For now, return empty history since we don't have metrics tracking yet
+    # This will be populated when we integrate with metrics collector
+    history: list[MetricPoint] = []
+
+    return MetricsHistoryResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        metric_name=metric_name,
+        metric_type=metric_type,
+        history=history,
+        total_points=len(history),
     )
