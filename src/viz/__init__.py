@@ -7,6 +7,13 @@ from .overlay import (
     overlay_detections,
     overlay_masks,
 )
+from .rendering_3d import (
+    RenderingConfig,
+    render_comparison,
+    render_lung_surface,
+    render_volume,
+    render_with_nodules,
+)
 from .viewer import MultiSliceViewer, SliceOrientation, ViewerConfig
 
 __all__ = [
@@ -20,4 +27,10 @@ __all__ = [
     "MultiSliceViewer",
     "SliceOrientation",
     "ViewerConfig",
+    # 3D rendering
+    "render_lung_surface",
+    "render_volume",
+    "render_with_nodules",
+    "render_comparison",
+    "RenderingConfig",
 ]
