@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 import lightning as L
 import torch
+from lightning.pytorch.callbacks import ModelCheckpoint
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
@@ -32,6 +33,7 @@ class LitNoduleDetection(L.LightningModule):
     - Mixed precision training (FP16, BF16, or FP32)
     - Hard negative mining for center detection
     - Training and validation data loading
+    - Model checkpointing
 
     Args:
         model_depth: Depth of the U-Net encoder/decoder. Default: 4
@@ -62,6 +64,13 @@ class LitNoduleDetection(L.LightningModule):
         patches_per_volume: Number of patches to sample per volume per epoch. Default: 16
         positive_fraction: Fraction of patches centered on nodules. Default: 0.5
         cache_size: Number of volumes to keep in memory cache. Default: 4
+        checkpoint_dir: Directory to save checkpoints. Default: "checkpoints"
+        checkpoint_monitor: Metric to monitor for checkpointing. Default: "val/loss"
+        checkpoint_mode: Mode for monitored metric ('min' or 'max'). Default: "min"
+        checkpoint_save_top_k: Number of best models to save. Default: 3
+        checkpoint_save_last: Save the last checkpoint. Default: True
+        checkpoint_every_n_epochs: Save checkpoint every N epochs. Default: 1
+        checkpoint_filename: Filename pattern for checkpoints. Default: "epoch={epoch:02d}-val_loss={val/loss:.4f}"
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
@@ -142,6 +151,13 @@ class LitNoduleDetection(L.LightningModule):
         patches_per_volume: int = 16,
         positive_fraction: float = 0.5,
         cache_size: int = 4,
+        checkpoint_dir: str = "checkpoints",
+        checkpoint_monitor: str = "val/loss",
+        checkpoint_mode: Literal["min", "max"] = "min",
+        checkpoint_save_top_k: int = 3,
+        checkpoint_save_last: bool = True,
+        checkpoint_every_n_epochs: int = 1,
+        checkpoint_filename: str = "epoch={epoch:02d}-val_loss={val/loss:.4f}",
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
@@ -174,6 +190,19 @@ class LitNoduleDetection(L.LightningModule):
             raise ValueError(f"cache_size must be >= 0, got {cache_size}")
         if len(patch_size) != 3 or any(s <= 0 for s in patch_size):
             raise ValueError(f"patch_size must be 3 positive integers, got {patch_size}")
+
+        # Validate checkpoint parameters
+        valid_modes = {"min", "max"}
+        if checkpoint_mode not in valid_modes:
+            raise ValueError(
+                f"Invalid checkpoint_mode '{checkpoint_mode}'. Must be one of {valid_modes}"
+            )
+        if checkpoint_save_top_k < 1:
+            raise ValueError(f"checkpoint_save_top_k must be >= 1, got {checkpoint_save_top_k}")
+        if checkpoint_every_n_epochs < 1:
+            raise ValueError(
+                f"checkpoint_every_n_epochs must be >= 1, got {checkpoint_every_n_epochs}"
+            )
 
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
@@ -216,6 +245,15 @@ class LitNoduleDetection(L.LightningModule):
         self.max_epochs = max_epochs
         self.precision = precision
         self.use_hard_negative_mining = use_hard_negative_mining
+
+        # Store checkpoint parameters
+        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_monitor = checkpoint_monitor
+        self.checkpoint_mode = checkpoint_mode
+        self.checkpoint_save_top_k = checkpoint_save_top_k
+        self.checkpoint_save_last = checkpoint_save_last
+        self.checkpoint_every_n_epochs = checkpoint_every_n_epochs
+        self.checkpoint_filename = checkpoint_filename
 
         # Store data loading parameters
         self.data_dir = Path(data_dir)
@@ -376,6 +414,29 @@ class LitNoduleDetection(L.LightningModule):
         self.log("test/loss_triage", losses["triage_unweighted"], on_step=False, on_epoch=True)
 
         return losses["total"]  # type: ignore[no-any-return]
+
+    def configure_callbacks(self) -> list[L.Callback]:
+        """Configure Lightning callbacks for training.
+
+        Returns:
+            List of configured callbacks including ModelCheckpoint
+        """
+        callbacks: list[L.Callback] = []
+
+        # Add model checkpointing callback
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=self.checkpoint_dir,
+            filename=self.checkpoint_filename,
+            monitor=self.checkpoint_monitor,
+            mode=self.checkpoint_mode,
+            save_top_k=self.checkpoint_save_top_k,
+            save_last=self.checkpoint_save_last,
+            every_n_epochs=self.checkpoint_every_n_epochs,
+            verbose=True,
+        )
+        callbacks.append(checkpoint_callback)
+
+        return callbacks
 
     def configure_optimizers(self) -> dict[str, Any]:  # type: ignore[override]
         """Configure optimizer and learning rate scheduler.

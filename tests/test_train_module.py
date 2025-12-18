@@ -775,3 +775,200 @@ class TestHardNegativeMiningIntegration:
         assert model.hparams.use_hard_negative_mining is True
         assert model.hparams.hard_negative_ratio == 5.0
         assert model.hparams.min_negative_samples == 250
+
+
+class TestCheckpointing:
+    """Test suite for model checkpointing functionality."""
+
+    def test_init_default_checkpoint_params(self):
+        """Test default checkpoint parameter initialization."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.checkpoint_dir == "checkpoints"
+        assert model.hparams.checkpoint_monitor == "val/loss"
+        assert model.hparams.checkpoint_mode == "min"
+        assert model.hparams.checkpoint_save_top_k == 3
+        assert model.hparams.checkpoint_save_last is True
+        assert model.hparams.checkpoint_every_n_epochs == 1
+        assert model.hparams.checkpoint_filename == "epoch={epoch:02d}-val_loss={val/loss:.4f}"
+
+    def test_init_custom_checkpoint_params(self):
+        """Test initialization with custom checkpoint parameters."""
+        model = LitNoduleDetection(
+            checkpoint_dir="custom_checkpoints",
+            checkpoint_monitor="val/dice",
+            checkpoint_mode="max",
+            checkpoint_save_top_k=5,
+            checkpoint_save_last=False,
+            checkpoint_every_n_epochs=2,
+            checkpoint_filename="best-{epoch:03d}",
+        )
+
+        assert model.hparams.checkpoint_dir == "custom_checkpoints"
+        assert model.hparams.checkpoint_monitor == "val/dice"
+        assert model.hparams.checkpoint_mode == "max"
+        assert model.hparams.checkpoint_save_top_k == 5
+        assert model.hparams.checkpoint_save_last is False
+        assert model.hparams.checkpoint_every_n_epochs == 2
+        assert model.hparams.checkpoint_filename == "best-{epoch:03d}"
+
+    def test_init_invalid_checkpoint_mode(self):
+        """Test that invalid checkpoint_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid checkpoint_mode"):
+            LitNoduleDetection(checkpoint_mode="invalid")
+
+        with pytest.raises(ValueError, match="Invalid checkpoint_mode"):
+            LitNoduleDetection(checkpoint_mode="maximize")
+
+    def test_init_invalid_checkpoint_save_top_k(self):
+        """Test that invalid checkpoint_save_top_k raises ValueError."""
+        with pytest.raises(ValueError, match="checkpoint_save_top_k must be >= 1"):
+            LitNoduleDetection(checkpoint_save_top_k=0)
+
+        with pytest.raises(ValueError, match="checkpoint_save_top_k must be >= 1"):
+            LitNoduleDetection(checkpoint_save_top_k=-1)
+
+    def test_init_invalid_checkpoint_every_n_epochs(self):
+        """Test that invalid checkpoint_every_n_epochs raises ValueError."""
+        with pytest.raises(ValueError, match="checkpoint_every_n_epochs must be >= 1"):
+            LitNoduleDetection(checkpoint_every_n_epochs=0)
+
+        with pytest.raises(ValueError, match="checkpoint_every_n_epochs must be >= 1"):
+            LitNoduleDetection(checkpoint_every_n_epochs=-1)
+
+    def test_configure_callbacks_returns_list(self):
+        """Test that configure_callbacks returns a list."""
+        model = LitNoduleDetection()
+        callbacks = model.configure_callbacks()
+
+        assert isinstance(callbacks, list)
+        assert len(callbacks) > 0
+
+    def test_configure_callbacks_contains_checkpoint(self):
+        """Test that configure_callbacks includes ModelCheckpoint callback."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection()
+        callbacks = model.configure_callbacks()
+
+        # Should have at least one ModelCheckpoint callback
+        checkpoint_callbacks = [cb for cb in callbacks if isinstance(cb, ModelCheckpoint)]
+        assert len(checkpoint_callbacks) == 1
+
+    def test_checkpoint_callback_configuration(self):
+        """Test that checkpoint callback is configured correctly."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(
+            checkpoint_dir="test_checkpoints",
+            checkpoint_monitor="val/dice",
+            checkpoint_mode="max",
+            checkpoint_save_top_k=10,
+        )
+        callbacks = model.configure_callbacks()
+
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.dirpath.endswith("test_checkpoints")
+        assert checkpoint_cb.monitor == "val/dice"
+        assert checkpoint_cb.mode == "max"
+        assert checkpoint_cb.save_top_k == 10
+
+    def test_checkpoint_callback_save_last(self):
+        """Test checkpoint callback save_last configuration."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        # Test with save_last=True
+        model = LitNoduleDetection(checkpoint_save_last=True)
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.save_last is True
+
+        # Test with save_last=False
+        model = LitNoduleDetection(checkpoint_save_last=False)
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.save_last is False
+
+    def test_checkpoint_callback_every_n_epochs(self):
+        """Test checkpoint callback every_n_epochs configuration."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_every_n_epochs=5)
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.every_n_epochs == 5
+
+    def test_checkpoint_callback_filename(self):
+        """Test checkpoint callback filename configuration."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_filename="model-{epoch:04d}")
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.filename == "model-{epoch:04d}"
+
+    def test_hyperparameter_saving_with_checkpointing(self):
+        """Test that checkpoint params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            checkpoint_dir="my_checkpoints",
+            checkpoint_monitor="val/loss",
+            checkpoint_mode="min",
+            checkpoint_save_top_k=7,
+            checkpoint_save_last=True,
+            checkpoint_every_n_epochs=3,
+        )
+
+        assert "checkpoint_dir" in model.hparams
+        assert "checkpoint_monitor" in model.hparams
+        assert "checkpoint_mode" in model.hparams
+        assert "checkpoint_save_top_k" in model.hparams
+        assert "checkpoint_save_last" in model.hparams
+        assert "checkpoint_every_n_epochs" in model.hparams
+
+    def test_checkpoint_with_all_custom_params(self):
+        """Test checkpoint configuration with all custom parameters."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(
+            checkpoint_dir="all_custom",
+            checkpoint_monitor="val/f1",
+            checkpoint_mode="max",
+            checkpoint_save_top_k=15,
+            checkpoint_save_last=True,
+            checkpoint_every_n_epochs=10,
+            checkpoint_filename="best_model_{epoch}_{val/f1:.3f}",
+        )
+
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.dirpath.endswith("all_custom")
+        assert checkpoint_cb.monitor == "val/f1"
+        assert checkpoint_cb.mode == "max"
+        assert checkpoint_cb.save_top_k == 15
+        assert checkpoint_cb.save_last is True
+        assert checkpoint_cb.every_n_epochs == 10
+        assert checkpoint_cb.filename == "best_model_{epoch}_{val/f1:.3f}"
+
+    def test_checkpoint_mode_min_for_loss(self):
+        """Test checkpoint mode='min' for loss metrics."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_monitor="val/loss", checkpoint_mode="min")
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.monitor == "val/loss"
+        assert checkpoint_cb.mode == "min"
+
+    def test_checkpoint_mode_max_for_accuracy(self):
+        """Test checkpoint mode='max' for accuracy/dice metrics."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_monitor="val/dice", checkpoint_mode="max")
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.monitor == "val/dice"
+        assert checkpoint_cb.mode == "max"
