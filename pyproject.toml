@@ -129,6 +129,7 @@ dependencies = [
     "lightning>=2.1.0",
     "mypy>=1.19.0",
     "scikit-learn>=1.7.2",
+    "pytest-testmon>=2.2.0",
 ]
 
 [project.optional-dependencies]
