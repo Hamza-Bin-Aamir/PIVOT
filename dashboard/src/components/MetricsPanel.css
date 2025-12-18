@@ -1,0 +1,141 @@
+.metrics-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.panel-controls {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.session-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.session-selector label {
+  color: #b0b0b0;
+  font-weight: 500;
+}
+
+.session-selector select {
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  color: #e0e0e0;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  min-width: 200px;
+}
+
+.session-selector select:focus {
+  outline: none;
+  border-color: #61dafb;
+}
+
+.live-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.live-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #b0b0b0;
+  cursor: pointer;
+}
+
+.live-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.ws-status {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+}
+
+.ws-status.connected {
+  color: #4caf50;
+  background: #4caf501a;
+}
+
+.ws-status.disconnected {
+  color: #f44336;
+  background: #f443361a;
+}
+
+.metrics-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.metric-card {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+  border: 1px solid #3a3a3a;
+}
+
+.metric-card h3 {
+  color: #b0b0b0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.metric-value {
+  color: #61dafb;
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.metric-label {
+  color: #707070;
+  font-size: 0.85rem;
+}
+
+.chart-container {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid #3a3a3a;
+}
+
+.chart-container h3 {
+  color: #e0e0e0;
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.error-message {
+  background: #f443361a;
+  border: 1px solid #f44336;
+  color: #f44336;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+}
+
+.empty-state {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 3rem;
+  text-align: center;
+  color: #707070;
+  font-style: italic;
+}
