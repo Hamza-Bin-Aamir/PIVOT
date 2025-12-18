@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { healthService } from './api/services';
+import ConfigPanel from './components/ConfigPanel';
 import './App.css';
 
 function App() {
@@ -44,12 +45,7 @@ function App() {
       </nav>
 
       <main className="app-main">
-        {activeTab === 'config' && (
-          <div className="panel">
-            <h2>Training Configuration</h2>
-            <p>Configuration panel will be added in Issue #102</p>
-          </div>
-        )}
+        {activeTab === 'config' && <ConfigPanel />}
         {activeTab === 'metrics' && (
           <div className="panel">
             <h2>Metrics Visualization</h2>
