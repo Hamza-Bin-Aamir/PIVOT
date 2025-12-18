@@ -2,10 +2,20 @@
 
 from .app import create_app
 from .config import APIConfig, CORSConfig, ServerConfig
+from .process_manager import (
+    ProcessConfig,
+    ProcessInfo,
+    ProcessStatus,
+    TrainingProcessManager,
+)
 
 __all__ = [
     "create_app",
     "APIConfig",
     "ServerConfig",
     "CORSConfig",
+    "TrainingProcessManager",
+    "ProcessConfig",
+    "ProcessInfo",
+    "ProcessStatus",
 ]
