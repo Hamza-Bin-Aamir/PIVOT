@@ -50,7 +50,7 @@ setup:
 	@echo "Setup complete!"
 
 test:
-	uv run pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+	uv run pytest tests/ -v --cov=src --cov-report=html --cov-report=term --testmon
 
 lint:
 	uv run ruff check src/ tests/ scripts/
