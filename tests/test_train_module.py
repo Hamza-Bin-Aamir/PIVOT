@@ -775,3 +775,543 @@ class TestHardNegativeMiningIntegration:
         assert model.hparams.use_hard_negative_mining is True
         assert model.hparams.hard_negative_ratio == 5.0
         assert model.hparams.min_negative_samples == 250
+
+
+class TestCheckpointing:
+    """Test suite for model checkpointing functionality."""
+
+    def test_init_default_checkpoint_params(self):
+        """Test default checkpoint parameter initialization."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.checkpoint_dir == "checkpoints"
+        assert model.hparams.checkpoint_monitor == "val/loss"
+        assert model.hparams.checkpoint_mode == "min"
+        assert model.hparams.checkpoint_save_top_k == 3
+        assert model.hparams.checkpoint_save_last is True
+        assert model.hparams.checkpoint_every_n_epochs == 1
+        assert model.hparams.checkpoint_filename == "epoch={epoch:02d}-val_loss={val/loss:.4f}"
+
+    def test_init_custom_checkpoint_params(self):
+        """Test initialization with custom checkpoint parameters."""
+        model = LitNoduleDetection(
+            checkpoint_dir="custom_checkpoints",
+            checkpoint_monitor="val/dice",
+            checkpoint_mode="max",
+            checkpoint_save_top_k=5,
+            checkpoint_save_last=False,
+            checkpoint_every_n_epochs=2,
+            checkpoint_filename="best-{epoch:03d}",
+        )
+
+        assert model.hparams.checkpoint_dir == "custom_checkpoints"
+        assert model.hparams.checkpoint_monitor == "val/dice"
+        assert model.hparams.checkpoint_mode == "max"
+        assert model.hparams.checkpoint_save_top_k == 5
+        assert model.hparams.checkpoint_save_last is False
+        assert model.hparams.checkpoint_every_n_epochs == 2
+        assert model.hparams.checkpoint_filename == "best-{epoch:03d}"
+
+    def test_init_invalid_checkpoint_mode(self):
+        """Test that invalid checkpoint_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid checkpoint_mode"):
+            LitNoduleDetection(checkpoint_mode="invalid")
+
+        with pytest.raises(ValueError, match="Invalid checkpoint_mode"):
+            LitNoduleDetection(checkpoint_mode="maximize")
+
+    def test_init_invalid_checkpoint_save_top_k(self):
+        """Test that invalid checkpoint_save_top_k raises ValueError."""
+        with pytest.raises(ValueError, match="checkpoint_save_top_k must be >= 1"):
+            LitNoduleDetection(checkpoint_save_top_k=0)
+
+        with pytest.raises(ValueError, match="checkpoint_save_top_k must be >= 1"):
+            LitNoduleDetection(checkpoint_save_top_k=-1)
+
+    def test_init_invalid_checkpoint_every_n_epochs(self):
+        """Test that invalid checkpoint_every_n_epochs raises ValueError."""
+        with pytest.raises(ValueError, match="checkpoint_every_n_epochs must be >= 1"):
+            LitNoduleDetection(checkpoint_every_n_epochs=0)
+
+        with pytest.raises(ValueError, match="checkpoint_every_n_epochs must be >= 1"):
+            LitNoduleDetection(checkpoint_every_n_epochs=-1)
+
+    def test_configure_callbacks_returns_list(self):
+        """Test that configure_callbacks returns a list."""
+        model = LitNoduleDetection()
+        callbacks = model.configure_callbacks()
+
+        assert isinstance(callbacks, list)
+        assert len(callbacks) > 0
+
+    def test_configure_callbacks_contains_checkpoint(self):
+        """Test that configure_callbacks includes ModelCheckpoint callback."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection()
+        callbacks = model.configure_callbacks()
+
+        # Should have at least one ModelCheckpoint callback
+        checkpoint_callbacks = [cb for cb in callbacks if isinstance(cb, ModelCheckpoint)]
+        assert len(checkpoint_callbacks) == 1
+
+    def test_checkpoint_callback_configuration(self):
+        """Test that checkpoint callback is configured correctly."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(
+            checkpoint_dir="test_checkpoints",
+            checkpoint_monitor="val/dice",
+            checkpoint_mode="max",
+            checkpoint_save_top_k=10,
+        )
+        callbacks = model.configure_callbacks()
+
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.dirpath.endswith("test_checkpoints")
+        assert checkpoint_cb.monitor == "val/dice"
+        assert checkpoint_cb.mode == "max"
+        assert checkpoint_cb.save_top_k == 10
+
+    def test_checkpoint_callback_save_last(self):
+        """Test checkpoint callback save_last configuration."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        # Test with save_last=True
+        model = LitNoduleDetection(checkpoint_save_last=True)
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.save_last is True
+
+        # Test with save_last=False
+        model = LitNoduleDetection(checkpoint_save_last=False)
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.save_last is False
+
+    def test_checkpoint_callback_every_n_epochs(self):
+        """Test checkpoint callback every_n_epochs configuration."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_every_n_epochs=5)
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.every_n_epochs == 5
+
+    def test_checkpoint_callback_filename(self):
+        """Test checkpoint callback filename configuration."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_filename="model-{epoch:04d}")
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+        assert checkpoint_cb.filename == "model-{epoch:04d}"
+
+    def test_hyperparameter_saving_with_checkpointing(self):
+        """Test that checkpoint params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            checkpoint_dir="my_checkpoints",
+            checkpoint_monitor="val/loss",
+            checkpoint_mode="min",
+            checkpoint_save_top_k=7,
+            checkpoint_save_last=True,
+            checkpoint_every_n_epochs=3,
+        )
+
+        assert "checkpoint_dir" in model.hparams
+        assert "checkpoint_monitor" in model.hparams
+        assert "checkpoint_mode" in model.hparams
+        assert "checkpoint_save_top_k" in model.hparams
+        assert "checkpoint_save_last" in model.hparams
+        assert "checkpoint_every_n_epochs" in model.hparams
+
+    def test_checkpoint_with_all_custom_params(self):
+        """Test checkpoint configuration with all custom parameters."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(
+            checkpoint_dir="all_custom",
+            checkpoint_monitor="val/f1",
+            checkpoint_mode="max",
+            checkpoint_save_top_k=15,
+            checkpoint_save_last=True,
+            checkpoint_every_n_epochs=10,
+            checkpoint_filename="best_model_{epoch}_{val/f1:.3f}",
+        )
+
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.dirpath.endswith("all_custom")
+        assert checkpoint_cb.monitor == "val/f1"
+        assert checkpoint_cb.mode == "max"
+        assert checkpoint_cb.save_top_k == 15
+        assert checkpoint_cb.save_last is True
+        assert checkpoint_cb.every_n_epochs == 10
+        assert checkpoint_cb.filename == "best_model_{epoch}_{val/f1:.3f}"
+
+    def test_checkpoint_mode_min_for_loss(self):
+        """Test checkpoint mode='min' for loss metrics."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_monitor="val/loss", checkpoint_mode="min")
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.monitor == "val/loss"
+        assert checkpoint_cb.mode == "min"
+
+    def test_checkpoint_mode_max_for_accuracy(self):
+        """Test checkpoint mode='max' for accuracy/dice metrics."""
+        from lightning.pytorch.callbacks import ModelCheckpoint
+
+        model = LitNoduleDetection(checkpoint_monitor="val/dice", checkpoint_mode="max")
+        callbacks = model.configure_callbacks()
+        checkpoint_cb = next(cb for cb in callbacks if isinstance(cb, ModelCheckpoint))
+
+        assert checkpoint_cb.monitor == "val/dice"
+        assert checkpoint_cb.mode == "max"
+
+
+class TestEarlyStopping:
+    """Test suite for early stopping functionality."""
+
+    def test_init_default_early_stopping_params(self):
+        """Test default early stopping parameter initialization."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.early_stopping_monitor == "val/loss"
+        assert model.hparams.early_stopping_patience == 10
+        assert model.hparams.early_stopping_mode == "min"
+        assert model.hparams.early_stopping_min_delta == 0.0
+
+    def test_init_custom_early_stopping_params(self):
+        """Test initialization with custom early stopping parameters."""
+        model = LitNoduleDetection(
+            early_stopping_monitor="val/dice",
+            early_stopping_patience=20,
+            early_stopping_mode="max",
+            early_stopping_min_delta=0.001,
+        )
+
+        assert model.hparams.early_stopping_monitor == "val/dice"
+        assert model.hparams.early_stopping_patience == 20
+        assert model.hparams.early_stopping_mode == "max"
+        assert model.hparams.early_stopping_min_delta == 0.001
+
+    def test_init_invalid_early_stopping_mode(self):
+        """Test that invalid early_stopping_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid early_stopping_mode"):
+            LitNoduleDetection(early_stopping_mode="invalid")
+
+        with pytest.raises(ValueError, match="Invalid early_stopping_mode"):
+            LitNoduleDetection(early_stopping_mode="minimize")
+
+    def test_init_invalid_early_stopping_patience(self):
+        """Test that invalid early_stopping_patience raises ValueError."""
+        with pytest.raises(ValueError, match="early_stopping_patience must be >= 1"):
+            LitNoduleDetection(early_stopping_patience=0)
+
+        with pytest.raises(ValueError, match="early_stopping_patience must be >= 1"):
+            LitNoduleDetection(early_stopping_patience=-1)
+
+    def test_init_invalid_early_stopping_min_delta(self):
+        """Test that invalid early_stopping_min_delta raises ValueError."""
+        with pytest.raises(ValueError, match="early_stopping_min_delta must be >= 0"):
+            LitNoduleDetection(early_stopping_min_delta=-0.001)
+
+        with pytest.raises(ValueError, match="early_stopping_min_delta must be >= 0"):
+            LitNoduleDetection(early_stopping_min_delta=-1.0)
+
+    def test_configure_callbacks_contains_early_stopping(self):
+        """Test that configure_callbacks includes EarlyStopping callback."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection()
+        callbacks = model.configure_callbacks()
+
+        # Should have at least one EarlyStopping callback
+        early_stopping_callbacks = [cb for cb in callbacks if isinstance(cb, EarlyStopping)]
+        assert len(early_stopping_callbacks) == 1
+
+    def test_early_stopping_callback_configuration(self):
+        """Test that early stopping callback is configured correctly."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(
+            early_stopping_monitor="val/f1",
+            early_stopping_patience=25,
+            early_stopping_mode="max",
+            early_stopping_min_delta=0.01,
+        )
+        callbacks = model.configure_callbacks()
+
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+
+        assert early_stopping_cb.monitor == "val/f1"
+        assert early_stopping_cb.patience == 25
+        assert early_stopping_cb.mode == "max"
+        assert early_stopping_cb.min_delta == 0.01
+
+    def test_early_stopping_mode_min_for_loss(self):
+        """Test early stopping mode='min' for loss metrics."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_monitor="val/loss", early_stopping_mode="min")
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+
+        assert early_stopping_cb.monitor == "val/loss"
+        assert early_stopping_cb.mode == "min"
+
+    def test_early_stopping_mode_max_for_accuracy(self):
+        """Test early stopping mode='max' for accuracy/dice metrics."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_monitor="val/dice", early_stopping_mode="max")
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+
+        assert early_stopping_cb.monitor == "val/dice"
+        assert early_stopping_cb.mode == "max"
+
+    def test_early_stopping_with_custom_patience(self):
+        """Test early stopping with custom patience values."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        # Short patience
+        model = LitNoduleDetection(early_stopping_patience=5)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        assert early_stopping_cb.patience == 5
+
+        # Long patience
+        model = LitNoduleDetection(early_stopping_patience=100)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        assert early_stopping_cb.patience == 100
+
+    def test_early_stopping_with_min_delta(self):
+        """Test early stopping with minimum delta for improvement."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_min_delta=0.005)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        # Lightning adjusts min_delta based on mode, so check absolute value
+        assert abs(early_stopping_cb.min_delta) == 0.005
+
+    def test_hyperparameter_saving_with_early_stopping(self):
+        """Test that early stopping params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            early_stopping_monitor="val/accuracy",
+            early_stopping_patience=15,
+            early_stopping_mode="max",
+            early_stopping_min_delta=0.002,
+        )
+
+        assert "early_stopping_monitor" in model.hparams
+        assert "early_stopping_patience" in model.hparams
+        assert "early_stopping_mode" in model.hparams
+        assert "early_stopping_min_delta" in model.hparams
+
+    def test_early_stopping_and_checkpointing_together(self):
+        """Test that both early stopping and checkpointing work together."""
+        from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+
+        model = LitNoduleDetection(
+            checkpoint_monitor="val/dice",
+            checkpoint_mode="max",
+            early_stopping_monitor="val/loss",
+            early_stopping_mode="min",
+            early_stopping_patience=20,
+        )
+        callbacks = model.configure_callbacks()
+
+        # Should have both callbacks
+        checkpoint_cbs = [cb for cb in callbacks if isinstance(cb, ModelCheckpoint)]
+        early_stopping_cbs = [cb for cb in callbacks if isinstance(cb, EarlyStopping)]
+
+        assert len(checkpoint_cbs) == 1
+        assert len(early_stopping_cbs) == 1
+
+        # Verify they can monitor different metrics
+        assert checkpoint_cbs[0].monitor == "val/dice"
+        assert early_stopping_cbs[0].monitor == "val/loss"
+
+    def test_early_stopping_with_zero_min_delta(self):
+        """Test early stopping with zero minimum delta."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_min_delta=0.0)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        assert early_stopping_cb.min_delta == 0.0
+
+
+class TestWeightsAndBiases:
+    """Test suite for Weights & Biases experiment tracking."""
+
+    def test_init_default_wandb_params(self):
+        """Test default W&B parameter initialization."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.wandb_project == "lung-nodule-detection"
+        assert model.hparams.wandb_name is None
+        assert model.hparams.wandb_log_model is False
+        assert model.hparams.wandb_offline is False
+
+    def test_init_custom_wandb_params(self):
+        """Test initialization with custom W&B parameters."""
+        model = LitNoduleDetection(
+            wandb_project="custom-project",
+            wandb_name="experiment-run-1",
+            wandb_log_model=True,
+            wandb_offline=True,
+        )
+
+        assert model.hparams.wandb_project == "custom-project"
+        assert model.hparams.wandb_name == "experiment-run-1"
+        assert model.hparams.wandb_log_model is True
+        assert model.hparams.wandb_offline is True
+
+    def test_configure_loggers_returns_wandb_logger(self):
+        """Test that configure_loggers returns a WandbLogger instance."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection()
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+
+    def test_wandb_logger_project_configuration(self):
+        """Test WandbLogger is configured with correct project."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_project="test-project")
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # The logger stores the project in experiment attribute
+        assert logger._project == "test-project"
+
+    def test_wandb_logger_run_name_configuration(self):
+        """Test WandbLogger uses wandb_name parameter."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_name="custom-run-name")
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # wandb_name parameter is passed to WandbLogger
+        assert model.hparams.wandb_name == "custom-run-name"
+
+    def test_wandb_logger_log_model_configuration(self):
+        """Test WandbLogger is configured to log model."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_log_model=True)
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # Store the log_model parameter in hparams
+        assert model.hparams.wandb_log_model is True
+
+    def test_wandb_logger_offline_mode(self):
+        """Test WandbLogger is configured for offline mode."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_offline=True)
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # offline mode is configured when creating the logger
+        assert model.hparams.wandb_offline is True
+
+    def test_wandb_logger_with_all_custom_params(self):
+        """Test WandbLogger with all custom parameters."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(
+            wandb_project="production-project",
+            wandb_name="best-model-v2",
+            wandb_log_model=True,
+            wandb_offline=False,
+        )
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        assert model.hparams.wandb_project == "production-project"
+        assert model.hparams.wandb_name == "best-model-v2"
+        assert model.hparams.wandb_log_model is True
+        assert model.hparams.wandb_offline is False
+
+    def test_hyperparameter_saving_with_wandb(self):
+        """Test that W&B params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            wandb_project="my-project",
+            wandb_name="run-1",
+            wandb_log_model=True,
+            wandb_offline=True,
+        )
+
+        assert "wandb_project" in model.hparams
+        assert "wandb_name" in model.hparams
+        assert "wandb_log_model" in model.hparams
+        assert "wandb_offline" in model.hparams
+        assert model.hparams.wandb_project == "my-project"
+        assert model.hparams.wandb_name == "run-1"
+        assert model.hparams.wandb_log_model is True
+        assert model.hparams.wandb_offline is True
+
+    def test_wandb_none_run_name(self):
+        """Test WandbLogger with None run name (auto-generated)."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_name=None)
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # None means W&B will auto-generate the run name
+        assert model.hparams.wandb_name is None
+
+    def test_wandb_integration_with_checkpointing(self):
+        """Test W&B integration works alongside checkpointing."""
+        model = LitNoduleDetection(
+            wandb_project="integration-test",
+            checkpoint_dir="checkpoints",
+            checkpoint_save_top_k=5,
+        )
+
+        logger = model.configure_loggers()
+        callbacks = model.configure_callbacks()
+
+        # Should have both W&B logger and checkpoint callback
+        from lightning.pytorch.callbacks import ModelCheckpoint
+        from lightning.pytorch.loggers import WandbLogger
+
+        assert isinstance(logger, WandbLogger)
+        checkpoint_cbs = [cb for cb in callbacks if isinstance(cb, ModelCheckpoint)]
+        assert len(checkpoint_cbs) == 1
+
+    def test_wandb_integration_with_early_stopping(self):
+        """Test W&B integration works alongside early stopping."""
+        model = LitNoduleDetection(
+            wandb_project="integration-test",
+            early_stopping_patience=10,
+            early_stopping_monitor="val/loss",
+        )
+
+        logger = model.configure_loggers()
+        callbacks = model.configure_callbacks()
+
+        # Should have both W&B logger and early stopping callback
+        from lightning.pytorch.callbacks import EarlyStopping
+        from lightning.pytorch.loggers import WandbLogger
+
+        assert isinstance(logger, WandbLogger)
+        early_stopping_cbs = [cb for cb in callbacks if isinstance(cb, EarlyStopping)]
+        assert len(early_stopping_cbs) == 1
+        assert early_stopping_cbs[0].monitor == "val/loss"
+        assert early_stopping_cbs[0].patience == 10

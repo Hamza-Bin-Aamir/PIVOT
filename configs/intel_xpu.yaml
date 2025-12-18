@@ -73,14 +73,25 @@ train:
     reduction: mean
 
   # Checkpointing
-  checkpoint:
-    checkpoint_dir: checkpoints/intel_xpu
-    save_every: 10
-    save_best: true
-    metric_to_track: val_dice
-    mode: max
-    save_last: true
-    max_checkpoints: 5
+  checkpoint_dir: "checkpoints/intel_xpu"
+  checkpoint_monitor: "val/dice"
+  checkpoint_mode: "max"
+  checkpoint_save_top_k: 5
+  checkpoint_save_last: true
+  checkpoint_every_n_epochs: 10
+  checkpoint_filename: "epoch={epoch:02d}-val_dice={val/dice:.4f}"
+
+  # Early stopping
+  early_stopping_monitor: "val/dice"
+  early_stopping_patience: 15
+  early_stopping_mode: "max"
+  early_stopping_min_delta: 0.0001
+
+  # Weights & Biases experiment tracking
+  wandb_project: "lung-nodule-detection"
+  wandb_name: "intel-xpu"
+  wandb_log_model: false
+  wandb_offline: false
 
   # Logging
   logging:

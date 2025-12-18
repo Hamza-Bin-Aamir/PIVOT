@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 import lightning as L
 import torch
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
@@ -32,6 +34,7 @@ class LitNoduleDetection(L.LightningModule):
     - Mixed precision training (FP16, BF16, or FP32)
     - Hard negative mining for center detection
     - Training and validation data loading
+    - Model checkpointing
 
     Args:
         model_depth: Depth of the U-Net encoder/decoder. Default: 4
@@ -62,6 +65,21 @@ class LitNoduleDetection(L.LightningModule):
         patches_per_volume: Number of patches to sample per volume per epoch. Default: 16
         positive_fraction: Fraction of patches centered on nodules. Default: 0.5
         cache_size: Number of volumes to keep in memory cache. Default: 4
+        checkpoint_dir: Directory to save checkpoints. Default: "checkpoints"
+        checkpoint_monitor: Metric to monitor for checkpointing. Default: "val/loss"
+        checkpoint_mode: Mode for monitored metric ('min' or 'max'). Default: "min"
+        checkpoint_save_top_k: Number of best models to save. Default: 3
+        checkpoint_save_last: Save the last checkpoint. Default: True
+        checkpoint_every_n_epochs: Save checkpoint every N epochs. Default: 1
+        checkpoint_filename: Filename pattern for checkpoints. Default: "epoch={epoch:02d}-val_loss={val/loss:.4f}"
+        early_stopping_monitor: Metric to monitor for early stopping. Default: "val/loss"
+        early_stopping_patience: Number of epochs with no improvement before stopping. Default: 10
+        early_stopping_mode: Mode for monitored metric ('min' or 'max'). Default: "min"
+        early_stopping_min_delta: Minimum change to qualify as improvement. Default: 0.0
+        wandb_project: Weights & Biases project name. Default: "lung-nodule-detection"
+        wandb_name: Weights & Biases run name. Default: None (auto-generated)
+        wandb_log_model: Log model checkpoints to W&B. Default: False
+        wandb_offline: Run W&B in offline mode. Default: False
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
@@ -142,6 +160,21 @@ class LitNoduleDetection(L.LightningModule):
         patches_per_volume: int = 16,
         positive_fraction: float = 0.5,
         cache_size: int = 4,
+        checkpoint_dir: str = "checkpoints",
+        checkpoint_monitor: str = "val/loss",
+        checkpoint_mode: Literal["min", "max"] = "min",
+        checkpoint_save_top_k: int = 3,
+        checkpoint_save_last: bool = True,
+        checkpoint_every_n_epochs: int = 1,
+        checkpoint_filename: str = "epoch={epoch:02d}-val_loss={val/loss:.4f}",
+        early_stopping_monitor: str = "val/loss",
+        early_stopping_patience: int = 10,
+        early_stopping_mode: Literal["min", "max"] = "min",
+        early_stopping_min_delta: float = 0.0,
+        wandb_project: str = "lung-nodule-detection",
+        wandb_name: str | None = None,
+        wandb_log_model: bool = False,
+        wandb_offline: bool = False,
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
@@ -174,6 +207,31 @@ class LitNoduleDetection(L.LightningModule):
             raise ValueError(f"cache_size must be >= 0, got {cache_size}")
         if len(patch_size) != 3 or any(s <= 0 for s in patch_size):
             raise ValueError(f"patch_size must be 3 positive integers, got {patch_size}")
+
+        # Validate checkpoint parameters
+        valid_modes = {"min", "max"}
+        if checkpoint_mode not in valid_modes:
+            raise ValueError(
+                f"Invalid checkpoint_mode '{checkpoint_mode}'. Must be one of {valid_modes}"
+            )
+        if checkpoint_save_top_k < 1:
+            raise ValueError(f"checkpoint_save_top_k must be >= 1, got {checkpoint_save_top_k}")
+        if checkpoint_every_n_epochs < 1:
+            raise ValueError(
+                f"checkpoint_every_n_epochs must be >= 1, got {checkpoint_every_n_epochs}"
+            )
+
+        # Validate early stopping parameters
+        if early_stopping_mode not in valid_modes:
+            raise ValueError(
+                f"Invalid early_stopping_mode '{early_stopping_mode}'. Must be one of {valid_modes}"
+            )
+        if early_stopping_patience < 1:
+            raise ValueError(f"early_stopping_patience must be >= 1, got {early_stopping_patience}")
+        if early_stopping_min_delta < 0:
+            raise ValueError(
+                f"early_stopping_min_delta must be >= 0, got {early_stopping_min_delta}"
+            )
 
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
@@ -216,6 +274,27 @@ class LitNoduleDetection(L.LightningModule):
         self.max_epochs = max_epochs
         self.precision = precision
         self.use_hard_negative_mining = use_hard_negative_mining
+
+        # Store checkpoint parameters
+        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint_monitor = checkpoint_monitor
+        self.checkpoint_mode = checkpoint_mode
+        self.checkpoint_save_top_k = checkpoint_save_top_k
+        self.checkpoint_save_last = checkpoint_save_last
+        self.checkpoint_every_n_epochs = checkpoint_every_n_epochs
+        self.checkpoint_filename = checkpoint_filename
+
+        # Store early stopping parameters
+        self.early_stopping_monitor = early_stopping_monitor
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_mode = early_stopping_mode
+        self.early_stopping_min_delta = early_stopping_min_delta
+
+        # Store W&B parameters
+        self.wandb_project = wandb_project
+        self.wandb_name = wandb_name
+        self.wandb_log_model = wandb_log_model
+        self.wandb_offline = wandb_offline
 
         # Store data loading parameters
         self.data_dir = Path(data_dir)
@@ -376,6 +455,55 @@ class LitNoduleDetection(L.LightningModule):
         self.log("test/loss_triage", losses["triage_unweighted"], on_step=False, on_epoch=True)
 
         return losses["total"]  # type: ignore[no-any-return]
+
+    def configure_callbacks(self) -> list[L.Callback]:
+        """Configure Lightning callbacks for training.
+
+        Returns:
+            List of configured callbacks including ModelCheckpoint and EarlyStopping
+        """
+        callbacks: list[L.Callback] = []
+
+        # Add model checkpointing callback
+        checkpoint_callback = ModelCheckpoint(
+            dirpath=self.checkpoint_dir,
+            filename=self.checkpoint_filename,
+            monitor=self.checkpoint_monitor,
+            mode=self.checkpoint_mode,
+            save_top_k=self.checkpoint_save_top_k,
+            save_last=self.checkpoint_save_last,
+            every_n_epochs=self.checkpoint_every_n_epochs,
+            verbose=True,
+        )
+        callbacks.append(checkpoint_callback)
+
+        # Add early stopping callback
+        early_stopping_callback = EarlyStopping(
+            monitor=self.early_stopping_monitor,
+            patience=self.early_stopping_patience,
+            mode=self.early_stopping_mode,
+            min_delta=self.early_stopping_min_delta,
+            verbose=True,
+        )
+        callbacks.append(early_stopping_callback)
+
+        return callbacks
+
+    def configure_loggers(self) -> WandbLogger | bool:
+        """Configure Weights & Biases logger for experiment tracking.
+
+        Returns:
+            WandbLogger instance for experiment tracking, or False to disable logging
+        """
+        # Create WandbLogger for experiment tracking
+        logger = WandbLogger(
+            project=self.wandb_project,
+            name=self.wandb_name,
+            log_model=self.wandb_log_model,
+            offline=self.wandb_offline,
+        )
+
+        return logger
 
     def configure_optimizers(self) -> dict[str, Any]:  # type: ignore[override]
         """Configure optimizer and learning rate scheduler.
