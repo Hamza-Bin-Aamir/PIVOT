@@ -58,6 +58,12 @@ train:
   early_stopping_mode: "min"
   early_stopping_min_delta: 0.0001
 
+  # Weights & Biases experiment tracking
+  wandb_project: "lung-nodule-detection"
+  wandb_name: null  # Auto-generated run name
+  wandb_log_model: false
+  wandb_offline: false
+
   # Logging
   log_dir: "logs"
   log_every: 10

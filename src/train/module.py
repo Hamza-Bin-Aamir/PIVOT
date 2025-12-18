@@ -12,6 +12,7 @@ from typing import Any, Literal
 import lightning as L
 import torch
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.loggers import WandbLogger
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
@@ -75,6 +76,10 @@ class LitNoduleDetection(L.LightningModule):
         early_stopping_patience: Number of epochs with no improvement before stopping. Default: 10
         early_stopping_mode: Mode for monitored metric ('min' or 'max'). Default: "min"
         early_stopping_min_delta: Minimum change to qualify as improvement. Default: 0.0
+        wandb_project: Weights & Biases project name. Default: "lung-nodule-detection"
+        wandb_name: Weights & Biases run name. Default: None (auto-generated)
+        wandb_log_model: Log model checkpoints to W&B. Default: False
+        wandb_offline: Run W&B in offline mode. Default: False
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
@@ -166,6 +171,10 @@ class LitNoduleDetection(L.LightningModule):
         early_stopping_patience: int = 10,
         early_stopping_mode: Literal["min", "max"] = "min",
         early_stopping_min_delta: float = 0.0,
+        wandb_project: str = "lung-nodule-detection",
+        wandb_name: str | None = None,
+        wandb_log_model: bool = False,
+        wandb_offline: bool = False,
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
@@ -280,6 +289,12 @@ class LitNoduleDetection(L.LightningModule):
         self.early_stopping_patience = early_stopping_patience
         self.early_stopping_mode = early_stopping_mode
         self.early_stopping_min_delta = early_stopping_min_delta
+
+        # Store W&B parameters
+        self.wandb_project = wandb_project
+        self.wandb_name = wandb_name
+        self.wandb_log_model = wandb_log_model
+        self.wandb_offline = wandb_offline
 
         # Store data loading parameters
         self.data_dir = Path(data_dir)
@@ -473,6 +488,22 @@ class LitNoduleDetection(L.LightningModule):
         callbacks.append(early_stopping_callback)
 
         return callbacks
+
+    def configure_loggers(self) -> WandbLogger | bool:
+        """Configure Weights & Biases logger for experiment tracking.
+
+        Returns:
+            WandbLogger instance for experiment tracking, or False to disable logging
+        """
+        # Create WandbLogger for experiment tracking
+        logger = WandbLogger(
+            project=self.wandb_project,
+            name=self.wandb_name,
+            log_model=self.wandb_log_model,
+            offline=self.wandb_offline,
+        )
+
+        return logger
 
     def configure_optimizers(self) -> dict[str, Any]:  # type: ignore[override]
         """Configure optimizer and learning rate scheduler.

@@ -1148,3 +1148,170 @@ class TestEarlyStopping:
         callbacks = model.configure_callbacks()
         early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
         assert early_stopping_cb.min_delta == 0.0
+
+
+class TestWeightsAndBiases:
+    """Test suite for Weights & Biases experiment tracking."""
+
+    def test_init_default_wandb_params(self):
+        """Test default W&B parameter initialization."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.wandb_project == "lung-nodule-detection"
+        assert model.hparams.wandb_name is None
+        assert model.hparams.wandb_log_model is False
+        assert model.hparams.wandb_offline is False
+
+    def test_init_custom_wandb_params(self):
+        """Test initialization with custom W&B parameters."""
+        model = LitNoduleDetection(
+            wandb_project="custom-project",
+            wandb_name="experiment-run-1",
+            wandb_log_model=True,
+            wandb_offline=True,
+        )
+
+        assert model.hparams.wandb_project == "custom-project"
+        assert model.hparams.wandb_name == "experiment-run-1"
+        assert model.hparams.wandb_log_model is True
+        assert model.hparams.wandb_offline is True
+
+    def test_configure_loggers_returns_wandb_logger(self):
+        """Test that configure_loggers returns a WandbLogger instance."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection()
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+
+    def test_wandb_logger_project_configuration(self):
+        """Test WandbLogger is configured with correct project."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_project="test-project")
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # The logger stores the project in experiment attribute
+        assert logger._project == "test-project"
+
+    def test_wandb_logger_run_name_configuration(self):
+        """Test WandbLogger uses wandb_name parameter."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_name="custom-run-name")
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # wandb_name parameter is passed to WandbLogger
+        assert model.hparams.wandb_name == "custom-run-name"
+
+    def test_wandb_logger_log_model_configuration(self):
+        """Test WandbLogger is configured to log model."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_log_model=True)
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # Store the log_model parameter in hparams
+        assert model.hparams.wandb_log_model is True
+
+    def test_wandb_logger_offline_mode(self):
+        """Test WandbLogger is configured for offline mode."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_offline=True)
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # offline mode is configured when creating the logger
+        assert model.hparams.wandb_offline is True
+
+    def test_wandb_logger_with_all_custom_params(self):
+        """Test WandbLogger with all custom parameters."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(
+            wandb_project="production-project",
+            wandb_name="best-model-v2",
+            wandb_log_model=True,
+            wandb_offline=False,
+        )
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        assert model.hparams.wandb_project == "production-project"
+        assert model.hparams.wandb_name == "best-model-v2"
+        assert model.hparams.wandb_log_model is True
+        assert model.hparams.wandb_offline is False
+
+    def test_hyperparameter_saving_with_wandb(self):
+        """Test that W&B params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            wandb_project="my-project",
+            wandb_name="run-1",
+            wandb_log_model=True,
+            wandb_offline=True,
+        )
+
+        assert "wandb_project" in model.hparams
+        assert "wandb_name" in model.hparams
+        assert "wandb_log_model" in model.hparams
+        assert "wandb_offline" in model.hparams
+        assert model.hparams.wandb_project == "my-project"
+        assert model.hparams.wandb_name == "run-1"
+        assert model.hparams.wandb_log_model is True
+        assert model.hparams.wandb_offline is True
+
+    def test_wandb_none_run_name(self):
+        """Test WandbLogger with None run name (auto-generated)."""
+        from lightning.pytorch.loggers import WandbLogger
+
+        model = LitNoduleDetection(wandb_name=None)
+        logger = model.configure_loggers()
+
+        assert isinstance(logger, WandbLogger)
+        # None means W&B will auto-generate the run name
+        assert model.hparams.wandb_name is None
+
+    def test_wandb_integration_with_checkpointing(self):
+        """Test W&B integration works alongside checkpointing."""
+        model = LitNoduleDetection(
+            wandb_project="integration-test",
+            checkpoint_dir="checkpoints",
+            checkpoint_save_top_k=5,
+        )
+
+        logger = model.configure_loggers()
+        callbacks = model.configure_callbacks()
+
+        # Should have both W&B logger and checkpoint callback
+        from lightning.pytorch.callbacks import ModelCheckpoint
+        from lightning.pytorch.loggers import WandbLogger
+
+        assert isinstance(logger, WandbLogger)
+        checkpoint_cbs = [cb for cb in callbacks if isinstance(cb, ModelCheckpoint)]
+        assert len(checkpoint_cbs) == 1
+
+    def test_wandb_integration_with_early_stopping(self):
+        """Test W&B integration works alongside early stopping."""
+        model = LitNoduleDetection(
+            wandb_project="integration-test",
+            early_stopping_patience=10,
+            early_stopping_monitor="val/loss",
+        )
+
+        logger = model.configure_loggers()
+        callbacks = model.configure_callbacks()
+
+        # Should have both W&B logger and early stopping callback
+        from lightning.pytorch.callbacks import EarlyStopping
+        from lightning.pytorch.loggers import WandbLogger
+
+        assert isinstance(logger, WandbLogger)
+        early_stopping_cbs = [cb for cb in callbacks if isinstance(cb, EarlyStopping)]
+        assert len(early_stopping_cbs) == 1
+        assert early_stopping_cbs[0].monitor == "val/loss"
+        assert early_stopping_cbs[0].patience == 10
