@@ -8,6 +8,7 @@ from .process_manager import (
     ProcessStatus,
     TrainingProcessManager,
 )
+from .session_manager import SessionConfig, SessionInfo, TrainingSessionManager
 
 __all__ = [
     "create_app",
@@ -18,4 +19,7 @@ __all__ = [
     "ProcessConfig",
     "ProcessInfo",
     "ProcessStatus",
+    "TrainingSessionManager",
+    "SessionConfig",
+    "SessionInfo",
 ]
