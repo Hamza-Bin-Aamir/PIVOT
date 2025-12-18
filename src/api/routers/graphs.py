@@ -449,3 +449,141 @@ async def get_learning_rate_graph_by_session(
         lr_data=lr_data,
         total_points=len(lr_data),
     )
+
+
+class GPUUsageGraphResponse(BaseModel):
+    """Response model for GPU usage graph endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        gpu_utilization: GPU compute utilization percentage over time
+        memory_usage: GPU memory usage percentage over time
+        total_points: Total number of data points
+    """
+
+    session_id: str
+    experiment_name: str
+    gpu_utilization: list[DataPoint]
+    memory_usage: list[DataPoint]
+    total_points: int
+
+
+@router.get("/gpu-usage", response_model=GPUUsageGraphResponse)
+async def get_gpu_usage_graph() -> GPUUsageGraphResponse:
+    """Get GPU usage data formatted for plotting (latest session).
+
+    This endpoint returns GPU utilization and memory usage percentages
+    over the course of training, formatted for dashboard monitoring.
+    The x-axis represents time (epochs or timestamps), and the y-axis
+    represents percentage (0-100).
+
+    Useful for monitoring resource utilization and identifying bottlenecks.
+
+    Returns:
+        GPUUsageGraphResponse with GPU utilization and memory usage data points
+
+    Raises:
+        HTTPException: If session manager not initialized or no sessions exist
+
+    Example:
+        GET /api/v1/graphs/gpu-usage
+
+        Response:
+        {
+            "session_id": "session_abc123",
+            "experiment_name": "baseline_v1",
+            "gpu_utilization": [
+                {"x": 1.0, "y": 85.5},
+                {"x": 2.0, "y": 87.2}
+            ],
+            "memory_usage": [
+                {"x": 1.0, "y": 92.1},
+                {"x": 2.0, "y": 91.8}
+            ],
+            "total_points": 4
+        }
+    """
+    try:
+        manager = get_session_manager()
+    except HTTPException:
+        raise
+
+    try:
+        session_id = get_latest_session_id(manager)
+        session_info = manager.get_session_info(session_id)
+    except HTTPException:
+        raise
+
+    # For now, return empty data - will be populated when GPU monitoring is integrated
+    # This structure is ready for frontend consumption
+    gpu_utilization: list[DataPoint] = []
+    memory_usage: list[DataPoint] = []
+
+    return GPUUsageGraphResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        gpu_utilization=gpu_utilization,
+        memory_usage=memory_usage,
+        total_points=len(gpu_utilization) + len(memory_usage),
+    )
+
+
+@router.get("/gpu-usage/{session_id}", response_model=GPUUsageGraphResponse)
+async def get_gpu_usage_graph_by_session(
+    session_id: str,
+) -> GPUUsageGraphResponse:
+    """Get GPU usage data formatted for plotting for a specific session.
+
+    This endpoint returns GPU utilization and memory usage data for a
+    specific training session, formatted for dashboard monitoring.
+
+    Args:
+        session_id: Training session ID
+
+    Returns:
+        GPUUsageGraphResponse with GPU utilization and memory usage data points
+
+    Raises:
+        HTTPException: If session manager not initialized or session not found
+
+    Example:
+        GET /api/v1/graphs/gpu-usage/session_abc123
+
+        Response:
+        {
+            "session_id": "session_abc123",
+            "experiment_name": "baseline_v1",
+            "gpu_utilization": [
+                {"x": 1.0, "y": 85.5},
+                {"x": 2.0, "y": 87.2}
+            ],
+            "memory_usage": [
+                {"x": 1.0, "y": 92.1},
+                {"x": 2.0, "y": 91.8}
+            ],
+            "total_points": 4
+        }
+    """
+    try:
+        manager = get_session_manager()
+    except HTTPException:
+        raise
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # For now, return empty data - will be populated when GPU monitoring is integrated
+    # This structure is ready for frontend consumption
+    gpu_utilization: list[DataPoint] = []
+    memory_usage: list[DataPoint] = []
+
+    return GPUUsageGraphResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        gpu_utilization=gpu_utilization,
+        memory_usage=memory_usage,
+        total_points=len(gpu_utilization) + len(memory_usage),
+    )
