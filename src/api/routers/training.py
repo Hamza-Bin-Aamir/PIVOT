@@ -276,3 +276,51 @@ async def resume_training(request: ProcessControlRequest) -> ProcessControlRespo
         raise HTTPException(status_code=404, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/stop", response_model=ProcessControlResponse)
+async def stop_training(request: ProcessControlRequest) -> ProcessControlResponse:
+    """Stop a running or paused training process.
+
+    This endpoint gracefully stops a training process by sending SIGTERM.
+    If the process doesn't terminate within 5 seconds, it will be forcefully
+    killed with SIGKILL.
+
+    Args:
+        request: Process control request with process_id
+
+    Returns:
+        ProcessControlResponse with updated status
+
+    Raises:
+        HTTPException: If process manager not initialized, process not found,
+                      or process cannot be stopped
+
+    Example:
+        POST /api/v1/training/stop
+        {
+            "process_id": "train_20251218_120000"
+        }
+
+    Note:
+        Only RUNNING or PAUSED processes can be stopped. The process will
+        be terminated gracefully, with force kill as fallback.
+    """
+    try:
+        manager = get_process_manager()
+    except HTTPException:
+        raise
+
+    try:
+        manager.stop_process(request.process_id)
+        process_info = manager.get_process_info(request.process_id)
+
+        return ProcessControlResponse(
+            process_id=request.process_id,
+            status=process_info.status.value,
+            message=f"Training process stopped successfully: {request.process_id}",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
