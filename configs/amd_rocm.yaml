@@ -81,6 +81,12 @@ train:
   checkpoint_every_n_epochs: 10
   checkpoint_filename: "epoch={epoch:02d}-val_dice={val/dice:.4f}"
 
+  # Early stopping
+  early_stopping_monitor: "val/dice"
+  early_stopping_patience: 15
+  early_stopping_mode: "max"
+  early_stopping_min_delta: 0.0001
+
   # Logging
   logging:
     log_dir: logs/amd_rocm

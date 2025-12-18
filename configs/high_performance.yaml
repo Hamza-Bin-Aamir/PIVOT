@@ -9,7 +9,6 @@ train:
   epochs: 300
   gradient_clip: 1.0
   gradient_accumulation_steps: 2  # Effective batch size = 8
-  early_stopping_patience: 30
   precision: "16-mixed"  # Mixed precision FP16 for faster training on NVIDIA GPUs
 
   # Hard negative mining (enabled for better performance)
@@ -87,6 +86,12 @@ train:
   checkpoint_save_last: true
   checkpoint_every_n_epochs: 5
   checkpoint_filename: "epoch={epoch:02d}-val_dice={val/dice:.4f}"
+
+  # Early stopping
+  early_stopping_monitor: "val/dice"
+  early_stopping_patience: 30
+  early_stopping_mode: "max"
+  early_stopping_min_delta: 0.0001
 
   # Logging
   logging:

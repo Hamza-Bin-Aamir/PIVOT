@@ -972,3 +972,179 @@ class TestCheckpointing:
 
         assert checkpoint_cb.monitor == "val/dice"
         assert checkpoint_cb.mode == "max"
+
+
+class TestEarlyStopping:
+    """Test suite for early stopping functionality."""
+
+    def test_init_default_early_stopping_params(self):
+        """Test default early stopping parameter initialization."""
+        model = LitNoduleDetection()
+
+        assert model.hparams.early_stopping_monitor == "val/loss"
+        assert model.hparams.early_stopping_patience == 10
+        assert model.hparams.early_stopping_mode == "min"
+        assert model.hparams.early_stopping_min_delta == 0.0
+
+    def test_init_custom_early_stopping_params(self):
+        """Test initialization with custom early stopping parameters."""
+        model = LitNoduleDetection(
+            early_stopping_monitor="val/dice",
+            early_stopping_patience=20,
+            early_stopping_mode="max",
+            early_stopping_min_delta=0.001,
+        )
+
+        assert model.hparams.early_stopping_monitor == "val/dice"
+        assert model.hparams.early_stopping_patience == 20
+        assert model.hparams.early_stopping_mode == "max"
+        assert model.hparams.early_stopping_min_delta == 0.001
+
+    def test_init_invalid_early_stopping_mode(self):
+        """Test that invalid early_stopping_mode raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid early_stopping_mode"):
+            LitNoduleDetection(early_stopping_mode="invalid")
+
+        with pytest.raises(ValueError, match="Invalid early_stopping_mode"):
+            LitNoduleDetection(early_stopping_mode="minimize")
+
+    def test_init_invalid_early_stopping_patience(self):
+        """Test that invalid early_stopping_patience raises ValueError."""
+        with pytest.raises(ValueError, match="early_stopping_patience must be >= 1"):
+            LitNoduleDetection(early_stopping_patience=0)
+
+        with pytest.raises(ValueError, match="early_stopping_patience must be >= 1"):
+            LitNoduleDetection(early_stopping_patience=-1)
+
+    def test_init_invalid_early_stopping_min_delta(self):
+        """Test that invalid early_stopping_min_delta raises ValueError."""
+        with pytest.raises(ValueError, match="early_stopping_min_delta must be >= 0"):
+            LitNoduleDetection(early_stopping_min_delta=-0.001)
+
+        with pytest.raises(ValueError, match="early_stopping_min_delta must be >= 0"):
+            LitNoduleDetection(early_stopping_min_delta=-1.0)
+
+    def test_configure_callbacks_contains_early_stopping(self):
+        """Test that configure_callbacks includes EarlyStopping callback."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection()
+        callbacks = model.configure_callbacks()
+
+        # Should have at least one EarlyStopping callback
+        early_stopping_callbacks = [cb for cb in callbacks if isinstance(cb, EarlyStopping)]
+        assert len(early_stopping_callbacks) == 1
+
+    def test_early_stopping_callback_configuration(self):
+        """Test that early stopping callback is configured correctly."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(
+            early_stopping_monitor="val/f1",
+            early_stopping_patience=25,
+            early_stopping_mode="max",
+            early_stopping_min_delta=0.01,
+        )
+        callbacks = model.configure_callbacks()
+
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+
+        assert early_stopping_cb.monitor == "val/f1"
+        assert early_stopping_cb.patience == 25
+        assert early_stopping_cb.mode == "max"
+        assert early_stopping_cb.min_delta == 0.01
+
+    def test_early_stopping_mode_min_for_loss(self):
+        """Test early stopping mode='min' for loss metrics."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_monitor="val/loss", early_stopping_mode="min")
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+
+        assert early_stopping_cb.monitor == "val/loss"
+        assert early_stopping_cb.mode == "min"
+
+    def test_early_stopping_mode_max_for_accuracy(self):
+        """Test early stopping mode='max' for accuracy/dice metrics."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_monitor="val/dice", early_stopping_mode="max")
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+
+        assert early_stopping_cb.monitor == "val/dice"
+        assert early_stopping_cb.mode == "max"
+
+    def test_early_stopping_with_custom_patience(self):
+        """Test early stopping with custom patience values."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        # Short patience
+        model = LitNoduleDetection(early_stopping_patience=5)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        assert early_stopping_cb.patience == 5
+
+        # Long patience
+        model = LitNoduleDetection(early_stopping_patience=100)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        assert early_stopping_cb.patience == 100
+
+    def test_early_stopping_with_min_delta(self):
+        """Test early stopping with minimum delta for improvement."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_min_delta=0.005)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        # Lightning adjusts min_delta based on mode, so check absolute value
+        assert abs(early_stopping_cb.min_delta) == 0.005
+
+    def test_hyperparameter_saving_with_early_stopping(self):
+        """Test that early stopping params are saved in hyperparameters."""
+        model = LitNoduleDetection(
+            early_stopping_monitor="val/accuracy",
+            early_stopping_patience=15,
+            early_stopping_mode="max",
+            early_stopping_min_delta=0.002,
+        )
+
+        assert "early_stopping_monitor" in model.hparams
+        assert "early_stopping_patience" in model.hparams
+        assert "early_stopping_mode" in model.hparams
+        assert "early_stopping_min_delta" in model.hparams
+
+    def test_early_stopping_and_checkpointing_together(self):
+        """Test that both early stopping and checkpointing work together."""
+        from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+
+        model = LitNoduleDetection(
+            checkpoint_monitor="val/dice",
+            checkpoint_mode="max",
+            early_stopping_monitor="val/loss",
+            early_stopping_mode="min",
+            early_stopping_patience=20,
+        )
+        callbacks = model.configure_callbacks()
+
+        # Should have both callbacks
+        checkpoint_cbs = [cb for cb in callbacks if isinstance(cb, ModelCheckpoint)]
+        early_stopping_cbs = [cb for cb in callbacks if isinstance(cb, EarlyStopping)]
+
+        assert len(checkpoint_cbs) == 1
+        assert len(early_stopping_cbs) == 1
+
+        # Verify they can monitor different metrics
+        assert checkpoint_cbs[0].monitor == "val/dice"
+        assert early_stopping_cbs[0].monitor == "val/loss"
+
+    def test_early_stopping_with_zero_min_delta(self):
+        """Test early stopping with zero minimum delta."""
+        from lightning.pytorch.callbacks import EarlyStopping
+
+        model = LitNoduleDetection(early_stopping_min_delta=0.0)
+        callbacks = model.configure_callbacks()
+        early_stopping_cb = next(cb for cb in callbacks if isinstance(cb, EarlyStopping))
+        assert early_stopping_cb.min_delta == 0.0

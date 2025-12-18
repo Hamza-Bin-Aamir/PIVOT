@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 import lightning as L
 import torch
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
@@ -71,6 +71,10 @@ class LitNoduleDetection(L.LightningModule):
         checkpoint_save_last: Save the last checkpoint. Default: True
         checkpoint_every_n_epochs: Save checkpoint every N epochs. Default: 1
         checkpoint_filename: Filename pattern for checkpoints. Default: "epoch={epoch:02d}-val_loss={val/loss:.4f}"
+        early_stopping_monitor: Metric to monitor for early stopping. Default: "val/loss"
+        early_stopping_patience: Number of epochs with no improvement before stopping. Default: 10
+        early_stopping_mode: Mode for monitored metric ('min' or 'max'). Default: "min"
+        early_stopping_min_delta: Minimum change to qualify as improvement. Default: 0.0
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
@@ -158,6 +162,10 @@ class LitNoduleDetection(L.LightningModule):
         checkpoint_save_last: bool = True,
         checkpoint_every_n_epochs: int = 1,
         checkpoint_filename: str = "epoch={epoch:02d}-val_loss={val/loss:.4f}",
+        early_stopping_monitor: str = "val/loss",
+        early_stopping_patience: int = 10,
+        early_stopping_mode: Literal["min", "max"] = "min",
+        early_stopping_min_delta: float = 0.0,
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
@@ -202,6 +210,18 @@ class LitNoduleDetection(L.LightningModule):
         if checkpoint_every_n_epochs < 1:
             raise ValueError(
                 f"checkpoint_every_n_epochs must be >= 1, got {checkpoint_every_n_epochs}"
+            )
+
+        # Validate early stopping parameters
+        if early_stopping_mode not in valid_modes:
+            raise ValueError(
+                f"Invalid early_stopping_mode '{early_stopping_mode}'. Must be one of {valid_modes}"
+            )
+        if early_stopping_patience < 1:
+            raise ValueError(f"early_stopping_patience must be >= 1, got {early_stopping_patience}")
+        if early_stopping_min_delta < 0:
+            raise ValueError(
+                f"early_stopping_min_delta must be >= 0, got {early_stopping_min_delta}"
             )
 
         # Save hyperparameters for checkpointing
@@ -254,6 +274,12 @@ class LitNoduleDetection(L.LightningModule):
         self.checkpoint_save_last = checkpoint_save_last
         self.checkpoint_every_n_epochs = checkpoint_every_n_epochs
         self.checkpoint_filename = checkpoint_filename
+
+        # Store early stopping parameters
+        self.early_stopping_monitor = early_stopping_monitor
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_mode = early_stopping_mode
+        self.early_stopping_min_delta = early_stopping_min_delta
 
         # Store data loading parameters
         self.data_dir = Path(data_dir)
@@ -419,7 +445,7 @@ class LitNoduleDetection(L.LightningModule):
         """Configure Lightning callbacks for training.
 
         Returns:
-            List of configured callbacks including ModelCheckpoint
+            List of configured callbacks including ModelCheckpoint and EarlyStopping
         """
         callbacks: list[L.Callback] = []
 
@@ -435,6 +461,16 @@ class LitNoduleDetection(L.LightningModule):
             verbose=True,
         )
         callbacks.append(checkpoint_callback)
+
+        # Add early stopping callback
+        early_stopping_callback = EarlyStopping(
+            monitor=self.early_stopping_monitor,
+            patience=self.early_stopping_patience,
+            mode=self.early_stopping_mode,
+            min_delta=self.early_stopping_min_delta,
+            verbose=True,
+        )
+        callbacks.append(early_stopping_callback)
 
         return callbacks
 

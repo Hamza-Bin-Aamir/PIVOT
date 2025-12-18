@@ -70,6 +70,12 @@ train:
   checkpoint_every_n_epochs: 1
   checkpoint_filename: "epoch={epoch:02d}-val_dice={val/dice:.4f}"
 
+  # Early stopping
+  early_stopping_monitor: "val/loss"
+  early_stopping_patience: 5
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.001
+
   # Logging
   logging:
     log_dir: logs/fast_dev

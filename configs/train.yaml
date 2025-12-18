@@ -52,6 +52,12 @@ train:
   checkpoint_every_n_epochs: 1
   checkpoint_filename: "epoch={epoch:02d}-val_loss={val/loss:.4f}"
 
+  # Early stopping
+  early_stopping_monitor: "val/loss"
+  early_stopping_patience: 10
+  early_stopping_mode: "min"
+  early_stopping_min_delta: 0.0001
+
   # Logging
   log_dir: "logs"
   log_every: 10
