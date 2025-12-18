@@ -18,6 +18,13 @@ from .output_formatter import (
 )
 from .overlap_blending import BlendMode, OverlapBlending
 from .peak_detection import detect_peaks_3d, extract_peak_coordinates, non_maximum_suppression_3d
+from .post_processing import (
+    apply_all_filters,
+    compute_iou_3d,
+    filter_by_confidence,
+    filter_by_overlap,
+    filter_by_size,
+)
 from .sliding_window import SlidingWindowInference
 from .torchscript_optimizer import CompilationMethod, TorchScriptOptimizer
 from .triage_calibration import CalibrationMethod, TriageScoreCalibration
@@ -45,4 +52,9 @@ __all__ = [
     "compute_volume",
     "compute_diameter",
     "compute_bounding_box",
+    "filter_by_size",
+    "filter_by_confidence",
+    "filter_by_overlap",
+    "compute_iou_3d",
+    "apply_all_filters",
 ]
