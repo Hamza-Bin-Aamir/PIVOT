@@ -27,6 +27,12 @@ from .rendering_3d import (
     render_volume,
     render_with_nodules,
 )
+from .report import (
+    ClinicalReport,
+    NoduleFinding,
+    generate_report_from_predictions,
+    plot_findings_summary,
+)
 from .viewer import MultiSliceViewer, SliceOrientation, ViewerConfig
 
 __all__ = [
@@ -57,4 +63,9 @@ __all__ = [
     "visualize_uncertainty_regions",
     "plot_calibration_curve",
     "plot_confidence_histogram",
+    # Clinical reports
+    "ClinicalReport",
+    "NoduleFinding",
+    "generate_report_from_predictions",
+    "plot_findings_summary",
 ]
