@@ -1,5 +1,13 @@
 """Evaluation metrics for nodule detection and segmentation."""
 
+from .dice import (
+    compute_batch_dice_scores,
+    compute_batch_iou_scores,
+    compute_dice_score,
+    compute_iou,
+    dice_to_iou,
+    iou_to_dice,
+)
 from .froc import (
     Detection,
     FROCPoint,
@@ -18,4 +26,10 @@ __all__ = [
     "compute_average_sensitivity",
     "match_detections_to_ground_truth",
     "compute_distance_3d",
+    "compute_dice_score",
+    "compute_iou",
+    "compute_batch_dice_scores",
+    "compute_batch_iou_scores",
+    "dice_to_iou",
+    "iou_to_dice",
 ]
