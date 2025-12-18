@@ -100,6 +100,28 @@ class MetricsResponse(BaseModel):
     total_metrics: int
 
 
+class LatestMetricsResponse(BaseModel):
+    """Response model for latest metrics endpoint.
+
+    Attributes:
+        session_id: Training session ID
+        experiment_name: Name of the experiment
+        epoch: Current epoch number
+        step: Current training step
+        train_metrics: Latest training metric values by name
+        val_metrics: Latest validation metric values by name
+        timestamp: ISO timestamp of latest metrics
+    """
+
+    session_id: str
+    experiment_name: str
+    epoch: int
+    step: int
+    train_metrics: dict[str, float]
+    val_metrics: dict[str, float]
+    timestamp: str
+
+
 @router.get("/metrics/{session_id}", response_model=MetricsResponse)
 async def get_metrics(session_id: str) -> MetricsResponse:
     """Get all metrics for a training session.
@@ -134,4 +156,42 @@ async def get_metrics(session_id: str) -> MetricsResponse:
         train_metrics=train_metrics,
         val_metrics=val_metrics,
         total_metrics=len(train_metrics) + len(val_metrics),
+    )
+
+
+@router.get("/metrics/{session_id}/latest", response_model=LatestMetricsResponse)
+async def get_latest_metrics(session_id: str) -> LatestMetricsResponse:
+    """Get the latest metrics for a training session.
+
+    Args:
+        session_id: Training session ID
+
+    Returns:
+        LatestMetricsResponse containing most recent metric values
+
+    Raises:
+        HTTPException: If session manager not initialized or session not found
+    """
+    try:
+        manager = get_session_manager()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    try:
+        session_info = manager.get_session_info(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    # For now, return empty metrics since we don't have metrics tracking yet
+    # This will be populated when we integrate with metrics collector
+    from datetime import datetime
+
+    return LatestMetricsResponse(
+        session_id=session_id,
+        experiment_name=session_info.experiment_name,
+        epoch=0,
+        step=0,
+        train_metrics={},
+        val_metrics={},
+        timestamp=datetime.now().isoformat(),
     )
