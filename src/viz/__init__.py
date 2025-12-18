@@ -1,5 +1,11 @@
 """Visualization tools for medical imaging and model outputs."""
 
+from .gradcam import (
+    GradCAM,
+    GradCAMConfig,
+    overlay_gradcam_on_volume,
+    render_gradcam_3d,
+)
 from .overlay import (
     ColorMap,
     OverlayConfig,
@@ -33,4 +39,9 @@ __all__ = [
     "render_with_nodules",
     "render_comparison",
     "RenderingConfig",
+    # Grad-CAM attention
+    "GradCAM",
+    "GradCAMConfig",
+    "overlay_gradcam_on_volume",
+    "render_gradcam_3d",
 ]
