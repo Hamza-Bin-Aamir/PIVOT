@@ -1,0 +1,98 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+
+.app-header {
+  background: #2a2a2a;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #3a3a3a;
+}
+
+.app-header h1 {
+  font-size: 1.5rem;
+  color: #61dafb;
+}
+
+.api-status {
+  font-size: 0.9rem;
+}
+
+.status-connected {
+  color: #4caf50;
+  font-weight: bold;
+}
+
+.status-disconnected {
+  color: #f44336;
+  font-weight: bold;
+}
+
+.status-checking {
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.app-nav {
+  background: #2a2a2a;
+  padding: 0 2rem;
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #3a3a3a;
+}
+
+.app-nav button {
+  background: transparent;
+  color: #e0e0e0;
+  border: none;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s;
+}
+
+.app-nav button:hover {
+  background: #3a3a3a;
+}
+
+.app-nav button.active {
+  color: #61dafb;
+  border-bottom-color: #61dafb;
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.panel {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.panel h2 {
+  color: #61dafb;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+}
+
+.panel p {
+  color: #b0b0b0;
+  line-height: 1.6;
+}

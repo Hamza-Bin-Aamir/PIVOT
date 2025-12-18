@@ -76,3 +76,4 @@ htmlcov/
 
 .testmon*
 .coverage*
+*.db

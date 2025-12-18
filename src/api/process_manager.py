@@ -240,6 +240,87 @@ class TrainingProcessManager:
                 info.error_message = f"Failed to stop process: {e}"
                 raise RuntimeError(f"Failed to stop process: {e}") from e
 
+    def pause_process(self, process_id: str) -> None:
+        """Pause a running training process.
+
+        Args:
+            process_id: Process ID to pause
+
+        Raises:
+            ValueError: If process ID not found
+            RuntimeError: If process cannot be paused or not in RUNNING state
+
+        Note:
+            On Unix-like systems, this sends SIGSTOP to pause the process.
+            The process can be resumed later with resume_process().
+        """
+        with self._lock:
+            if process_id not in self.processes:
+                raise ValueError(f"Process not found: {process_id}")
+
+            info = self.processes[process_id]
+            process = self._process_handles.get(process_id)
+
+            if process is None:
+                raise RuntimeError(f"Process handle not found: {process_id}")
+
+            if info.status != ProcessStatus.RUNNING:
+                raise RuntimeError(
+                    f"Cannot pause process in {info.status.value} state. "
+                    "Only RUNNING processes can be paused."
+                )
+
+            try:
+                # Send SIGSTOP signal to pause the process (Unix only)
+                import signal
+
+                process.send_signal(signal.SIGSTOP)
+                info.status = ProcessStatus.PAUSED
+
+            except Exception as e:
+                info.error_message = f"Failed to pause process: {e}"
+                raise RuntimeError(f"Failed to pause process: {e}") from e
+
+    def resume_process(self, process_id: str) -> None:
+        """Resume a paused training process.
+
+        Args:
+            process_id: Process ID to resume
+
+        Raises:
+            ValueError: If process ID not found
+            RuntimeError: If process cannot be resumed or not in PAUSED state
+
+        Note:
+            On Unix-like systems, this sends SIGCONT to resume the process.
+        """
+        with self._lock:
+            if process_id not in self.processes:
+                raise ValueError(f"Process not found: {process_id}")
+
+            info = self.processes[process_id]
+            process = self._process_handles.get(process_id)
+
+            if process is None:
+                raise RuntimeError(f"Process handle not found: {process_id}")
+
+            if info.status != ProcessStatus.PAUSED:
+                raise RuntimeError(
+                    f"Cannot resume process in {info.status.value} state. "
+                    "Only PAUSED processes can be resumed."
+                )
+
+            try:
+                # Send SIGCONT signal to resume the process (Unix only)
+                import signal
+
+                process.send_signal(signal.SIGCONT)
+                info.status = ProcessStatus.RUNNING
+
+            except Exception as e:
+                info.error_message = f"Failed to resume process: {e}"
+                raise RuntimeError(f"Failed to resume process: {e}") from e
+
     def get_process_info(self, process_id: str) -> ProcessInfo:
         """Get information about a process.
 
