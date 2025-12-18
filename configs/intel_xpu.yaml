@@ -20,6 +20,11 @@ train:
   data_dir: data/processed
   batch_size: 1  # Conservative for Intel GPUs
   num_workers: 4
+  pin_memory: true
+  patch_size: [96, 96, 96]
+  patches_per_volume: 16
+  positive_fraction: 0.5
+  cache_size: 4
 
   # Model
   model:

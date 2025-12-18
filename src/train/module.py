@@ -6,13 +6,16 @@ PyTorch Lightning's LightningModule interface.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 import lightning as L
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
 
+from src.data import LUNADataset
 from src.loss import HardNegativeMiningLoss, MultiTaskLoss
 from src.model import MultiTaskUNet3D
 
@@ -28,6 +31,7 @@ class LitNoduleDetection(L.LightningModule):
     - Optimizer and scheduler configuration
     - Mixed precision training (FP16, BF16, or FP32)
     - Hard negative mining for center detection
+    - Training and validation data loading
 
     Args:
         model_depth: Depth of the U-Net encoder/decoder. Default: 4
@@ -50,26 +54,45 @@ class LitNoduleDetection(L.LightningModule):
             Only used if use_hard_negative_mining=True. Default: 3.0
         min_negative_samples: Minimum hard negatives to mine regardless of positive count.
             Only used if use_hard_negative_mining=True. Default: 100
+        data_dir: Directory containing preprocessed data. Default: "data/processed"
+        batch_size: Batch size for training and validation. Default: 2
+        num_workers: Number of data loading workers. Default: 4
+        pin_memory: Pin memory for faster GPU transfer. Default: True
+        patch_size: Size of patches extracted from volumes (D, H, W). Default: (96, 96, 96)
+        patches_per_volume: Number of patches to sample per volume per epoch. Default: 16
+        positive_fraction: Fraction of patches centered on nodules. Default: 0.5
+        cache_size: Number of volumes to keep in memory cache. Default: 4
         seg_loss_kwargs: Keyword arguments for DiceLoss. Default: None
         center_loss_kwargs: Keyword arguments for FocalLoss. Default: None
         size_loss_kwargs: Keyword arguments for SmoothL1Loss. Default: None
         triage_loss_kwargs: Keyword arguments for WeightedBCELoss. Default: None
 
     Example:
-        >>> # Basic usage with FP32
-        >>> model = LitNoduleDetection(model_depth=4, init_features=32)
+        >>> # Basic usage with automatic data loading
+        >>> model = LitNoduleDetection(data_dir="data/processed")
         >>> trainer = L.Trainer(max_epochs=100)
-        >>> trainer.fit(model, train_dataloader, val_dataloader)
+        >>> trainer.fit(model)
+
+        >>> # Custom data loading configuration
+        >>> model = LitNoduleDetection(
+        ...     data_dir="data/processed",
+        ...     batch_size=4,
+        ...     num_workers=8,
+        ...     patch_size=(128, 128, 128),
+        ...     patches_per_volume=32,
+        ...     positive_fraction=0.7
+        ... )
+        >>> trainer.fit(model)
 
         >>> # Mixed precision FP16 (NVIDIA GPUs)
         >>> model = LitNoduleDetection(precision='16-mixed')
         >>> trainer = L.Trainer(max_epochs=100, precision='16-mixed')
-        >>> trainer.fit(model, train_dataloader, val_dataloader)
+        >>> trainer.fit(model)
 
         >>> # Mixed precision BF16 (AMD/Intel GPUs)
         >>> model = LitNoduleDetection(precision='bf16-mixed')
         >>> trainer = L.Trainer(max_epochs=100, precision='bf16-mixed')
-        >>> trainer.fit(model, train_dataloader, val_dataloader)
+        >>> trainer.fit(model)
 
         >>> # With hard negative mining for center detection
         >>> model = LitNoduleDetection(
@@ -77,7 +100,7 @@ class LitNoduleDetection(L.LightningModule):
         ...     hard_negative_ratio=3.0,
         ...     min_negative_samples=100
         ... )
-        >>> trainer.fit(model, train_dataloader, val_dataloader)
+        >>> trainer.fit(model)
 
         >>> # Custom task weights
         >>> model = LitNoduleDetection(
@@ -111,6 +134,14 @@ class LitNoduleDetection(L.LightningModule):
         use_hard_negative_mining: bool = False,
         hard_negative_ratio: float = 3.0,
         min_negative_samples: int = 100,
+        data_dir: str | Path = "data/processed",
+        batch_size: int = 2,
+        num_workers: int = 4,
+        pin_memory: bool = True,
+        patch_size: tuple[int, int, int] = (96, 96, 96),
+        patches_per_volume: int = 16,
+        positive_fraction: float = 0.5,
+        cache_size: int = 4,
         seg_loss_kwargs: dict[str, Any] | None = None,
         center_loss_kwargs: dict[str, Any] | None = None,
         size_loss_kwargs: dict[str, Any] | None = None,
@@ -129,6 +160,20 @@ class LitNoduleDetection(L.LightningModule):
                 raise ValueError(f"hard_negative_ratio must be positive, got {hard_negative_ratio}")
             if min_negative_samples < 0:
                 raise ValueError(f"min_negative_samples must be >= 0, got {min_negative_samples}")
+
+        # Validate data loading parameters
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size}")
+        if num_workers < 0:
+            raise ValueError(f"num_workers must be >= 0, got {num_workers}")
+        if patches_per_volume <= 0:
+            raise ValueError(f"patches_per_volume must be positive, got {patches_per_volume}")
+        if not 0 < positive_fraction <= 1:
+            raise ValueError(f"positive_fraction must be in (0, 1], got {positive_fraction}")
+        if cache_size < 0:
+            raise ValueError(f"cache_size must be >= 0, got {cache_size}")
+        if len(patch_size) != 3 or any(s <= 0 for s in patch_size):
+            raise ValueError(f"patch_size must be 3 positive integers, got {patch_size}")
 
         # Save hyperparameters for checkpointing
         self.save_hyperparameters()
@@ -171,6 +216,16 @@ class LitNoduleDetection(L.LightningModule):
         self.max_epochs = max_epochs
         self.precision = precision
         self.use_hard_negative_mining = use_hard_negative_mining
+
+        # Store data loading parameters
+        self.data_dir = Path(data_dir)
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.pin_memory = pin_memory
+        self.patch_size = patch_size
+        self.patches_per_volume = patches_per_volume
+        self.positive_fraction = positive_fraction
+        self.cache_size = cache_size
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         """Forward pass through the model.
@@ -356,3 +411,61 @@ class LitNoduleDetection(L.LightningModule):
         # Log current learning rate
         current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("train/lr", current_lr, on_step=False, on_epoch=True)
+
+    def train_dataloader(self) -> DataLoader:
+        """Create training data loader.
+
+        Returns:
+            DataLoader for training set with shuffle=True and drop_last=True
+        """
+        dataset = LUNADataset(
+            data_dir=self.data_dir,
+            split="train",
+            patch_size=self.patch_size,
+            patches_per_volume=self.patches_per_volume,
+            positive_fraction=self.positive_fraction,
+            cache_size=self.cache_size,
+            seed=1337,  # Fixed seed for reproducibility
+            include_mask=True,
+            include_heatmap=True,
+            transform=None,  # Augmentation handled separately if needed
+        )
+
+        return DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=True,  # Shuffle training data
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            drop_last=True,  # Drop last incomplete batch
+            persistent_workers=self.num_workers > 0,  # Keep workers alive between epochs
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        """Create validation data loader.
+
+        Returns:
+            DataLoader for validation set with shuffle=False and drop_last=False
+        """
+        dataset = LUNADataset(
+            data_dir=self.data_dir,
+            split="val",
+            patch_size=self.patch_size,
+            patches_per_volume=self.patches_per_volume,
+            positive_fraction=self.positive_fraction,
+            cache_size=self.cache_size,
+            seed=42,  # Different seed from training
+            include_mask=True,
+            include_heatmap=True,
+            transform=None,  # No augmentation for validation
+        )
+
+        return DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            shuffle=False,  # No shuffle for validation
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            drop_last=False,  # Keep all validation samples
+            persistent_workers=self.num_workers > 0,  # Keep workers alive between epochs
+        )

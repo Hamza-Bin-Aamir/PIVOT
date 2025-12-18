@@ -4,6 +4,11 @@ train:
   data_dir: "data/processed"
   batch_size: 2
   num_workers: 4
+  pin_memory: true  # Pin memory for faster GPU transfer
+  patch_size: [96, 96, 96]  # Patch size for training (D, H, W)
+  patches_per_volume: 16  # Number of patches to sample per volume per epoch
+  positive_fraction: 0.5  # Fraction of patches centered on nodules
+  cache_size: 4  # Number of volumes to keep in memory cache
 
   # Model settings
   model:

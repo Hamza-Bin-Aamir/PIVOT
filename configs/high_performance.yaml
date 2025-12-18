@@ -21,6 +21,11 @@ train:
   data_dir: data/processed
   batch_size: 4
   num_workers: 8
+  pin_memory: true  # Pin memory for faster GPU transfer
+  patch_size: [128, 128, 128]  # Larger patches for better context
+  patches_per_volume: 32  # More patches per volume
+  positive_fraction: 0.7  # Higher positive fraction for hard negatives
+  cache_size: 8  # Larger cache for high-memory systems
 
   # Model
   model:
