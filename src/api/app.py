@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import APIConfig
-from .routers import epochs, health, status
+from .routers import epochs, health, metrics, status
 from .session_manager import TrainingSessionManager
 
 
@@ -58,11 +58,13 @@ def create_app(
     if session_manager is not None:
         status.set_session_manager(session_manager)
         epochs.set_session_manager(session_manager)
+        metrics.set_session_manager(session_manager)
 
     # Include routers
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(status.router, prefix="/api/v1", tags=["status"])
     app.include_router(epochs.router, prefix="/api/v1", tags=["epochs"])
+    app.include_router(metrics.router, prefix="/api/v1", tags=["metrics"])
 
     # Root endpoint
     @app.get("/")
